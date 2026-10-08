@@ -6,6 +6,8 @@ import android.content.Intent
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
@@ -393,6 +395,15 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
         val contents = result.contents ?: return@rememberLauncherForActivityResult
         ShareLink.parse(contents)?.let(onJoin) ?: run { error = "That QR code isn't a TwoDo list." }
     }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            QrImage.decode(context, uri)?.let(ShareLink::parse)?.let(onJoin)
+                ?: run { error = "Couldn't find a TwoDo QR code in that image." }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Join a list") },
@@ -410,6 +421,10 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Scan QR code") }
+                OutlinedButton(
+                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Choose screenshot") }
                 Spacer(Modifier.height(16.dp))
                 OutlinedTextField(
                     value = link,

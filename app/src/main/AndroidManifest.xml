@@ -31,6 +31,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="twodo" android:host="join" />
             </intent-filter>
+            <!-- Share a screenshot of a list's QR code to TwoDo to join it. -->
+            <intent-filter android:label="Join TwoDo list">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
         </activity>
 
         <!-- Let the QR scanner follow the phone's orientation instead of forcing landscape. -->
