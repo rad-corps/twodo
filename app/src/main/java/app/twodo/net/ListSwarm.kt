@@ -17,12 +17,14 @@ import kotlinx.serialization.json.putJsonObject
 import okhttp3.OkHttpClient
 import org.webrtc.PeerConnectionFactory
 
-/** Public WebTorrent trackers used as a meeting point. Several, so any one going down doesn't matter. */
+/**
+ * Public WebTorrent trackers used as a meeting point. Several, so any one going down doesn't matter.
+ * Checked October 2026 that each relays offers for arbitrary rooms (btorrent.xyz and files.fm had died).
+ */
 val TRACKERS = listOf(
     "wss://tracker.webtorrent.dev",
     "wss://tracker.openwebtorrent.com",
-    "wss://tracker.btorrent.xyz",
-    "wss://tracker.files.fm:7073/announce",
+    "wss://tracker.novage.com.ua/announce",
 )
 
 interface SwarmEvents {
