@@ -20,10 +20,10 @@ object ShareLink {
         "${WEB_PREFIX}id=${list.id}&name=${URLEncoder.encode(list.name, "UTF-8")}&k=${list.secret}" +
             if (list.kind == SpaceKind.DIARY) "&t=diary" else ""
 
-    /** Message text to send along with the link. */
-    fun message(list: TodoList): String = "Join “${list.name}” on TwoDo: ${build(list)}"
+    /** Message text to send along with the link; [appName] is the product name. */
+    fun message(list: TodoList, appName: String): String = "Join “${list.name}” on $appName: ${build(list)}"
 
-    /** Finds a TwoDo link anywhere in [text], e.g. a whole pasted message. */
+    /** Finds a share link anywhere in [text], e.g. a whole pasted message. */
     fun parse(text: String): Invite? {
         val query = linkPattern.find(text)?.groupValues?.get(1) ?: return null
         val params = query.split('&').mapNotNull { part ->

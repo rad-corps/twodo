@@ -29,7 +29,7 @@ class Identity(context: Context) {
         if (knownNames[deviceId] != name) prefs.edit { putString("knownNames", Json.encodeToString(knownNames + (deviceId to name))) }
     }
 
-    /** The app's colour theme. Older versions had a dark mode switch; turning it off meant TwoDo Light. */
+    /** The app's colour theme. Older versions had a dark mode switch; turning it off meant the light default. */
     var themeId: String
         get() = prefs.getString("theme", null) ?: if (prefs.getBoolean("darkMode", true)) "twodo-dark" else "twodo-light"
         set(value) = prefs.edit { putString("theme", value) }

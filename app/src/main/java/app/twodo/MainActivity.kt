@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
             val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) ?: return
             lifecycleScope.launch {
                 QrImage.decode(this@MainActivity, uri)?.let(ShareLink::parse)?.let { pendingInvite.value = it }
-                    ?: Toast.makeText(this@MainActivity, "Couldn't find a TwoDo QR code in that image.", Toast.LENGTH_LONG).show()
+                    ?: Toast.makeText(this@MainActivity, getString(R.string.no_code_in_image, getString(R.string.brand_name)), Toast.LENGTH_LONG).show()
             }
         }
     }

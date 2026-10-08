@@ -142,7 +142,7 @@ class MergeTest {
         val list = empty.copy(name = "Groceries")
         val expected = Invite(list.id, list.name, list.secret)
         assertTrue(ShareLink.build(list).startsWith("https://"))
-        assertEquals(expected, ShareLink.parse(ShareLink.message(list)))
+        assertEquals(expected, ShareLink.parse(ShareLink.message(list, "TwoDo")))
         // Links shared before the switch to https still work.
         assertEquals(expected, ShareLink.parse("twodo://join?id=${list.id}&name=Groceries&k=${list.secret}"))
     }

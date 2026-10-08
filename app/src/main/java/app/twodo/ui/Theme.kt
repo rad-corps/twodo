@@ -69,8 +69,8 @@ private fun c(hex: Long) = Color(0xFF000000 or hex)
 
 /** All themes, in picker order. Colours are the palettes' published values. */
 val THEMES: List<AppTheme> = listOf(
-    theme("twodo-dark", "TwoDo Dark", true, c(0x121413), c(0x1C1F1E), c(0xE2E4E2), c(0xA9AFAC), c(0x8FC9B4), c(0xF2B8B5)),
-    theme("twodo-light", "TwoDo Light", false, c(0xFAFAF8), c(0xEFF1EF), c(0x1B1D1C), c(0x575E5B), c(0x2E6B5E), c(0xBA1A1A)),
+    theme("twodo-dark", "Default Dark", true, c(0x121413), c(0x1C1F1E), c(0xE2E4E2), c(0xA9AFAC), c(0x8FC9B4), c(0xF2B8B5)),
+    theme("twodo-light", "Default Light", false, c(0xFAFAF8), c(0xEFF1EF), c(0x1B1D1C), c(0x575E5B), c(0x2E6B5E), c(0xBA1A1A)),
     // Solarized (Ethan Schoonover): base03/base02 dark, base3/base2 light; blue accent.
     theme("solarized-dark", "Solarized Dark", true, c(0x002B36), c(0x073642), c(0x93A1A1), c(0x839496), c(0x268BD2), c(0xDC322F)),
     theme("solarized-light", "Solarized Light", false, c(0xFDF6E3), c(0xEEE8D5), c(0x586E75), c(0x657B83), c(0x268BD2), c(0xDC322F)),

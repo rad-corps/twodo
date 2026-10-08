@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TwoDo</string>
+    <!-- The product name, used everywhere in the app. Rename here (the name isn't final yet). -->
+    <string name="brand_name">TwoDo</string>
+    <string name="app_name">@string/brand_name</string>
+    <string name="no_code_in_image">Couldn\'t find a %1$s QR code in that image.</string>
+    <string name="join_from_image">Join shared list</string>
     <string name="channel_conflicts">Sync conflicts</string>
     <string name="channel_sync">Background sync</string>
     <string name="channel_people">People joining and leaving</string>

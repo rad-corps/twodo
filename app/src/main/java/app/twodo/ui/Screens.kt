@@ -90,6 +90,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -208,7 +209,7 @@ private fun ListsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("TwoDo", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleLarge) },
                 colors = flatBar(),
                 actions = {
                     TextButton(onClick = { joining = true }) { Text("Join list") }
@@ -493,7 +494,7 @@ internal fun ShareDialog(app: TwoDoApp, list: TodoList, onDismiss: () -> Unit) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Image(qr, "QR code for this list", Modifier.size(260.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("Scan this with TwoDo on the other phone (Join list). Anyone with this code can see and edit the list.")
+                Text("Scan this with ${stringResource(R.string.brand_name)} on the other phone (Join list). Anyone with this code can see and edit the list.")
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (newcomers.isEmpty()) {
@@ -517,7 +518,7 @@ internal fun ShareDialog(app: TwoDoApp, list: TodoList, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
         dismissButton = {
             TextButton(onClick = {
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ShareLink.message(list))
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ShareLink.message(list, context.getString(R.string.brand_name)))
                 context.startActivity(Intent.createChooser(send, "Send link"))
             }) { Text("Send link") }
         },
@@ -526,11 +527,12 @@ internal fun ShareDialog(app: TwoDoApp, list: TodoList, onDismiss: () -> Unit) {
 
 @Composable
 private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
+    val appName = stringResource(R.string.brand_name)
     var link by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         val contents = result.contents ?: return@rememberLauncherForActivityResult
-        ShareLink.parse(contents)?.let(onJoin) ?: run { error = "That QR code isn't a TwoDo list." }
+        ShareLink.parse(contents)?.let(onJoin) ?: run { error = "That QR code isn't a $appName list." }
     }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -538,7 +540,7 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             QrImage.decode(context, uri)?.let(ShareLink::parse)?.let(onJoin)
-                ?: run { error = "Couldn't find a TwoDo QR code in that image." }
+                ?: run { error = "Couldn't find a $appName QR code in that image." }
         }
     }
     AlertDialog(
@@ -575,7 +577,7 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = {
-                ShareLink.parse(link)?.let(onJoin) ?: run { error = "That isn't a TwoDo link." }
+                ShareLink.parse(link)?.let(onJoin) ?: run { error = "That isn't a $appName link." }
             }, enabled = link.isNotBlank()) { Text("Join") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -637,7 +639,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text("Notify me about changes")
                         Text(
-                            "When others change a list while TwoDo is closed.",
+                            "When others change a list while ${stringResource(R.string.brand_name)} is closed.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -715,9 +717,9 @@ private fun ConnectionLogDialog(onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
         dismissButton = {
             TextButton(onClick = {
-                val header = "TwoDo ${BuildConfig.VERSION_NAME} on ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}"
+                val header = "${context.getString(R.string.brand_name)} ${BuildConfig.VERSION_NAME} on ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}"
                 val clipboard = context.getSystemService(ClipboardManager::class.java)
-                clipboard.setPrimaryClip(ClipData.newPlainText("TwoDo connection log", (listOf(header) + lines).joinToString("\n")))
+                clipboard.setPrimaryClip(ClipData.newPlainText("Connection log", (listOf(header) + lines).joinToString("\n")))
                 Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
             }) { Text("Copy") }
         },
@@ -739,7 +741,7 @@ internal fun JoiningBanner(list: TodoList, status: SyncStatus) {
                 status.receiving || status.peerNames.isNotEmpty() || status.relayPeerNames.isNotEmpty() -> "Getting the $what…"
                 !status.online -> "Waiting for an internet connection…"
                 status.trackersOnline == 0 && status.relaysOnline == 0 -> "Connecting…"
-                else -> "Looking for the other phone… TwoDo needs to be open there, or have Sync in background on."
+                else -> "Looking for the other phone… ${stringResource(R.string.brand_name)} needs to be open there, or have Sync in background on."
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
