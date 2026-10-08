@@ -43,6 +43,12 @@ class TwoDoApp : Application() {
         }
     }
 
+    fun setName(name: String) {
+        if (name.trim() == identity.deviceName && identity.hasName) return
+        identity.deviceName = name
+        sync.nameChanged()
+    }
+
     fun setDarkMode(enabled: Boolean) {
         identity.darkMode = enabled
         darkMode.value = enabled

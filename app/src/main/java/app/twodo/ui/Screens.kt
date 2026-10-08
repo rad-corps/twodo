@@ -99,12 +99,26 @@ fun TwoDoRoot(app: TwoDoApp, pendingInvite: Invite?, onInviteHandled: () -> Unit
     val status by app.sync.status.collectAsStateWithLifecycle()
     var openListId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
+    var askName by remember { mutableStateOf(!app.identity.hasName) }
 
     LaunchedEffect(Unit) { app.repo.conflicts.collect { snackbar.showSnackbar(it.describe()) } }
     LaunchedEffect(pendingInvite) {
         if (pendingInvite != null) {
             openListId = app.repo.joinList(pendingInvite).id
             onInviteHandled()
+        }
+    }
+
+    if (askName) {
+        TextPromptDialog(
+            title = "What's your name?",
+            label = "Your name",
+            confirm = "Save",
+            supporting = "Shown to others next to items you tick. You can change it in Settings.",
+            onDismiss = { askName = false },
+        ) { name ->
+            app.setName(name)
+            askName = false
         }
     }
 
@@ -212,6 +226,7 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
     var sharing by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
+    val names by app.sync.names.collectAsStateWithLifecycle()
 
     fun add() {
         val text = newText
@@ -302,7 +317,7 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
                                 )
                                 if (item.checked) {
                                     Text(
-                                        tickedBy(item, app.identity.deviceId),
+                                        tickedBy(item, app.identity.deviceId, names),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.outline,
                                     )
@@ -417,7 +432,7 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
 
 @Composable
 private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf(app.identity.deviceName) }
+    var name by remember { mutableStateOf(if (app.identity.hasName) app.identity.deviceName else "") }
     var background by remember { mutableStateOf(app.identity.backgroundSync) }
     var dark by remember { mutableStateOf(app.identity.darkMode) }
     AlertDialog(
@@ -454,7 +469,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = {
-                app.identity.deviceName = name
+                if (name.isNotBlank()) app.setName(name)
                 app.setDarkMode(dark)
                 if (background != app.identity.backgroundSync) app.setBackgroundSync(background)
                 onDismiss()
@@ -465,13 +480,26 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun TextPromptDialog(title: String, label: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+private fun TextPromptDialog(
+    title: String,
+    label: String,
+    confirm: String,
+    supporting: String? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text(label) }, singleLine = true)
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text(label) },
+                supportingText = supporting?.let { { Text(it) } },
+                singleLine = true,
+            )
         },
         confirmButton = { TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -479,8 +507,8 @@ private fun TextPromptDialog(title: String, label: String, confirm: String, onDi
 }
 
 /** e.g. "Adam · 5 min. ago" — who ticked the item and when. */
-private fun tickedBy(item: Item, myDeviceId: String): String {
-    val who = if (item.version.by == myDeviceId) "You" else item.editor
+private fun tickedBy(item: Item, myDeviceId: String, names: Map<String, String>): String {
+    val who = if (item.version.by == myDeviceId) "You" else names[item.version.by] ?: item.editor
     val now = System.currentTimeMillis()
     val time = if (now - item.version.ts < DateUtils.MINUTE_IN_MILLIS) {
         "just now"

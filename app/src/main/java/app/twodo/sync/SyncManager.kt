@@ -61,6 +61,11 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     private val keys = mutableMapOf<String, ListKeys>()
     private var users = 0
 
+    private val _names = MutableStateFlow(identity.knownNames)
+
+    /** Other devices' current names, by device id. */
+    val names: StateFlow<Map<String, String>> = _names.asStateFlow()
+
     private val _status = MutableStateFlow<Map<String, SyncStatus>>(emptyMap())
     val status: StateFlow<Map<String, SyncStatus>> = _status.asStateFlow()
 
@@ -130,6 +135,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
         when (message) {
             is SyncMessage.Hello -> {
                 peer.deviceName = message.deviceName
+                identity.rememberName(message.deviceId, message.deviceName)
+                _names.value = identity.knownNames
                 publishStatus()
             }
             is SyncMessage.Items -> {
@@ -139,6 +146,14 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                     swarm.openPeers.filter { it !== peer }.forEach { send(swarm, it, SyncMessage.Items(accepted)) }
                 }
             }
+        }
+    }
+
+    /** Tells connected devices about this user's new name. */
+    fun nameChanged() {
+        scope.launch {
+            val hello = SyncMessage.Hello(identity.deviceId, identity.deviceName)
+            swarms.values.forEach { swarm -> swarm.openPeers.forEach { send(swarm, it, hello) } }
         }
     }
 
