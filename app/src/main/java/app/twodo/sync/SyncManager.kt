@@ -15,7 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -37,6 +39,11 @@ sealed class SyncMessage {
     @Serializable
     @SerialName("items")
     data class Items(val items: List<Item>, val full: Boolean = false) : SyncMessage()
+
+    /** The sender removed the list from their device. */
+    @Serializable
+    @SerialName("leave")
+    data class Leave(val deviceId: String) : SyncMessage()
 }
 
 data class SyncStatus(val trackersOnline: Int = 0, val peerNames: List<String> = emptyList())
@@ -60,6 +67,11 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     private val swarms = mutableMapOf<String, ListSwarm>()
     private val keys = mutableMapOf<String, ListKeys>()
     private var users = 0
+    /** Peers whose first full sync is just us joining, not changes worth announcing. */
+    private val firstSyncPeers = mutableSetOf<Peer>()
+
+    private val _events = MutableSharedFlow<ListEvent>(extraBufferCapacity = 64)
+    val events: SharedFlow<ListEvent> = _events
 
     private val _names = MutableStateFlow(identity.knownNames)
 
@@ -137,16 +149,47 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 peer.deviceName = message.deviceName
                 identity.rememberName(message.deviceId, message.deviceName)
                 _names.value = identity.knownNames
+                val member = repo.recordMember(swarm.listId, message.deviceId, message.deviceName)
+                if (member.firstContact) firstSyncPeers += peer
+                if (member.worthAnnouncing) {
+                    _events.tryEmit(ListEvent.Joined(swarm.listId, listName(swarm.listId), message.deviceName))
+                }
                 publishStatus()
             }
             is SyncMessage.Items -> {
-                val accepted = repo.applyRemote(swarm.listId, message.items)
+                val changes = repo.applyRemote(swarm.listId, message.items)
                 // Pass changes on so devices that aren't directly connected still converge.
-                if (accepted.isNotEmpty()) {
+                if (changes.isNotEmpty()) {
+                    val accepted = changes.map { it.second }
                     swarm.openPeers.filter { it !== peer }.forEach { send(swarm, it, SyncMessage.Items(accepted)) }
                 }
+                val quiet = message.full && firstSyncPeers.remove(peer)
+                if (!quiet) announceChanges(swarm.listId, changes)
+            }
+            is SyncMessage.Leave -> {
+                val name = repo.removeMember(swarm.listId, message.deviceId) ?: peer.deviceName ?: return
+                _events.tryEmit(ListEvent.Left(swarm.listId, listName(swarm.listId), name))
             }
         }
+    }
+
+    private fun announceChanges(listId: String, changes: List<Pair<Item?, Item>>) {
+        changes.mapNotNull { (before, after) -> describeChange(before, after)?.let { after to it } }
+            .groupBy { (item, _) -> _names.value[item.version.by] ?: item.editor }
+            .forEach { (who, described) ->
+                _events.tryEmit(
+                    ListEvent.Changed(listId, listName(listId), who, described.map { it.second }, described.map { it.first.id }),
+                )
+            }
+    }
+
+    private fun listName(listId: String) = repo.lists.value[listId]?.name ?: "a list"
+
+    /** Tells the others this device is leaving the list, then removes it from this device. */
+    suspend fun leave(listId: String) {
+        scope.launch { broadcast(listId, SyncMessage.Leave(identity.deviceId)) }.join()
+        delay(500) // let the message go out before the swarm closes
+        repo.removeList(listId)
     }
 
     /** Tells connected devices about this user's new name. */
@@ -167,6 +210,10 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     private fun send(swarm: ListSwarm, peer: Peer, message: SyncMessage) {
         val text = keys[swarm.listId]?.encrypt(json.encodeToString(SyncMessage.serializer(), message)) ?: return
         if (!peer.send(text)) Log.w(TAG, "Send to ${peer.deviceName} failed")
+    }
+
+    override suspend fun onPeerClosed(swarm: ListSwarm, peer: Peer) {
+        firstSyncPeers -= peer
     }
 
     private fun publishStatus() {

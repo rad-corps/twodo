@@ -3,6 +3,7 @@ package app.twodo
 import android.app.Application
 import app.twodo.data.Identity
 import app.twodo.data.ListRepository
+import app.twodo.sync.ListEvent
 import app.twodo.sync.Notifications
 import app.twodo.sync.SyncManager
 import app.twodo.sync.SyncService
@@ -40,6 +41,17 @@ class TwoDoApp : Application() {
         SyncWorker.schedule(this)
         scope.launch {
             repo.conflicts.collect { if (visibleActivities == 0) Notifications.showConflict(this@TwoDoApp, it) }
+        }
+        scope.launch {
+            sync.events.collect { event ->
+                when (event) {
+                    // People coming and going always gets a pull-down notification.
+                    is ListEvent.Joined, is ListEvent.Left -> Notifications.showPeople(this@TwoDoApp, event)
+                    // Changes are highlighted in the app when it's open; otherwise one quiet notification per list.
+                    is ListEvent.Changed ->
+                        if (visibleActivities == 0 && identity.notifyChanges) Notifications.addChanges(this@TwoDoApp, event)
+                }
+            }
         }
     }
 

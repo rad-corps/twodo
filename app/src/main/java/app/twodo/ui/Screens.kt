@@ -8,6 +8,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
@@ -65,6 +67,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,18 +88,27 @@ import app.twodo.model.Invite
 import app.twodo.model.Item
 import app.twodo.model.ShareLink
 import app.twodo.model.TodoList
+import app.twodo.sync.ListEvent
+import app.twodo.sync.Notifications
 import app.twodo.sync.SyncStatus
 import app.twodo.sync.describe
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
-fun TwoDoRoot(app: TwoDoApp, pendingInvite: Invite?, onInviteHandled: () -> Unit) {
+fun TwoDoRoot(
+    app: TwoDoApp,
+    pendingInvite: Invite?,
+    onInviteHandled: () -> Unit,
+    openRequest: String? = null,
+    onOpenHandled: () -> Unit = {},
+) {
     val lists by app.repo.lists.collectAsStateWithLifecycle()
     val status by app.sync.status.collectAsStateWithLifecycle()
     var openListId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -104,6 +116,12 @@ fun TwoDoRoot(app: TwoDoApp, pendingInvite: Invite?, onInviteHandled: () -> Unit
     var askName by remember { mutableStateOf(!app.identity.hasName) }
 
     LaunchedEffect(Unit) { app.repo.conflicts.collect { snackbar.showSnackbar(it.describe()) } }
+    LaunchedEffect(openRequest) {
+        if (openRequest != null) {
+            openListId = openRequest
+            onOpenHandled()
+        }
+    }
     LaunchedEffect(pendingInvite) {
         if (pendingInvite != null) {
             openListId = app.repo.joinList(pendingInvite).id
@@ -229,6 +247,20 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
     var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     val names by app.sync.names.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val highlighted = remember { mutableStateMapOf<String, Long>() }
+    LaunchedEffect(list.id) {
+        Notifications.clearChanges(context, list.id)
+        app.sync.events.collect { event ->
+            if (event !is ListEvent.Changed || event.listId != list.id) return@collect
+            val stamp = System.currentTimeMillis()
+            event.itemIds.forEach { highlighted[it] = stamp }
+            launch {
+                delay(HIGHLIGHT_MS)
+                event.itemIds.forEach { if (highlighted[it] == stamp) highlighted.remove(it) }
+            }
+        }
+    }
 
     fun add() {
         val text = newText
@@ -295,9 +327,14 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
             LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
                 items(ordered, key = { it.id }) { item ->
                     ReorderableItem(reorderState, key = item.id) {
+                        val background by animateColorAsState(
+                            if (item.id in highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                            animationSpec = tween(600),
+                            label = "highlight",
+                        )
                         Row(
                             Modifier.fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surface)
+                                .background(background)
                                 .clickable { scope.launch { app.repo.setChecked(list.id, item.id, !item.checked) } }
                                 .padding(start = 8.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -354,7 +391,7 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
                 TextButton(onClick = {
                     confirmRemove = false
                     onBack()
-                    scope.launch { app.repo.removeList(list.id) }
+                    scope.launch { app.sync.leave(list.id) }
                 }) { Text("Remove") }
             },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
@@ -450,6 +487,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(if (app.identity.hasName) app.identity.deviceName else "") }
     var background by remember { mutableStateOf(app.identity.backgroundSync) }
     var dark by remember { mutableStateOf(app.identity.darkMode) }
+    var notifyChanges by remember { mutableStateOf(app.identity.notifyChanges) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
@@ -471,6 +509,18 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
+                        Text("Notify me about changes")
+                        Text(
+                            "When others change a list while TwoDo is closed.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = notifyChanges, onCheckedChange = { notifyChanges = it })
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
                         Text("Sync in background")
                         Text(
                             "Stay reachable while the app is closed. Shows a permanent notification and uses some battery.",
@@ -486,6 +536,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
             TextButton(onClick = {
                 if (name.isNotBlank()) app.setName(name)
                 app.setDarkMode(dark)
+                app.identity.notifyChanges = notifyChanges
                 if (background != app.identity.backgroundSync) app.setBackgroundSync(background)
                 onDismiss()
             }) { Text("Save") }
@@ -548,6 +599,8 @@ private fun SyncDot(status: SyncStatus?) {
             .background(if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
     )
 }
+
+private const val HIGHLIGHT_MS = 2_500L
 
 private fun SyncStatus?.summary(): String = when {
     this == null || trackersOnline == 0 && peerNames.isEmpty() -> "Offline"

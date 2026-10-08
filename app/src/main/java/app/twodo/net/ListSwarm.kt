@@ -29,6 +29,7 @@ interface SwarmEvents {
     suspend fun onPeerOpen(swarm: ListSwarm, peer: Peer)
     suspend fun onPeerMessage(swarm: ListSwarm, peer: Peer, text: String)
     suspend fun onChanged(swarm: ListSwarm)
+    suspend fun onPeerClosed(swarm: ListSwarm, peer: Peer)
 }
 
 /**
@@ -87,7 +88,10 @@ class ListSwarm(
     fun drop(peer: Peer) {
         peer.close()
         peer.remotePeerId?.let { if (peers[it] === peer) peers.remove(it) }
-        scope.launch { events.onChanged(this@ListSwarm) }
+        scope.launch {
+            events.onPeerClosed(this@ListSwarm, peer)
+            events.onChanged(this@ListSwarm)
+        }
     }
 
     private suspend fun onTrackerOpen(tracker: TrackerClient) {

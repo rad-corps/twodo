@@ -41,7 +41,7 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     val conflicts: SharedFlow<Conflict> = _conflicts
 
     suspend fun createList(name: String): TodoList = mutex.withLock {
-        val list = TodoList(UUID.randomUUID().toString(), name.trim().ifEmpty { "My list" }, ListKeys.newSecret())
+        val list = TodoList(UUID.randomUUID().toString(), name.trim().ifEmpty { "My list" }, ListKeys.newSecret(), createdHere = true)
         save(list)
         list
     }
@@ -96,13 +96,36 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     suspend fun deleteItem(listId: String, itemId: String) =
         editItem(listId, itemId) { copy(deleted = true) }
 
-    /** Applies items from a peer. Returns those that changed local state, so they can be forwarded. */
-    suspend fun applyRemote(listId: String, items: List<Item>): List<Item> = mutex.withLock {
+    /**
+     * Applies items from a peer. Returns each item that changed local state, paired with what it was
+     * before (null if new), so changes can be forwarded and announced.
+     */
+    suspend fun applyRemote(listId: String, items: List<Item>): List<Pair<Item?, Item>> = mutex.withLock {
         val list = _lists.value[listId] ?: return emptyList()
         val result = list.merge(items)
         if (result.list != list) save(result.list)
         result.conflicts.forEach { _conflicts.tryEmit(it) }
-        result.accepted
+        result.accepted.map { list.items[it.id] to it }
+    }
+
+    data class MemberUpdate(val isNew: Boolean, val firstContact: Boolean, val worthAnnouncing: Boolean)
+
+    /** Records that [deviceId] (called [name]) is on the list. */
+    suspend fun recordMember(listId: String, deviceId: String, name: String): MemberUpdate = mutex.withLock {
+        val list = _lists.value[listId] ?: return MemberUpdate(false, false, false)
+        val isNew = deviceId !in list.members
+        val firstContact = list.members.isEmpty()
+        if (list.members[deviceId] != name) save(list.copy(members = list.members + (deviceId to name)))
+        // Someone new is only news on a list we created or have already been sharing.
+        MemberUpdate(isNew, firstContact, worthAnnouncing = isNew && (!firstContact || list.createdHere))
+    }
+
+    /** Forgets a device that left the list; returns its name. */
+    suspend fun removeMember(listId: String, deviceId: String): String? = mutex.withLock {
+        val list = _lists.value[listId] ?: return null
+        val name = list.members[deviceId] ?: return null
+        save(list.copy(members = list.members - deviceId))
+        name
     }
 
     private suspend fun editItem(listId: String, itemId: String, change: Item.() -> Item) = putLocal(listId) { list ->

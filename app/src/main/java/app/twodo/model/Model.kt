@@ -41,6 +41,10 @@ data class TodoList(
     val items: Map<String, Item> = emptyMap(),
     /** Local only: concurrent versions that lost a conflict, so they're never re-applied. */
     val superseded: Map<String, Set<Version>> = emptyMap(),
+    /** Local only: other devices seen on this list (device id -> name). */
+    val members: Map<String, String> = emptyMap(),
+    /** Local only: this device created the list (rather than joining it). */
+    val createdHere: Boolean = false,
 ) {
     val visibleItems: List<Item>
         get() = items.values.filter { !it.deleted }.sortedWith(compareBy({ it.position }, { it.id }))

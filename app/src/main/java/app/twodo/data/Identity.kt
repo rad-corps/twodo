@@ -33,6 +33,10 @@ class Identity(context: Context) {
         get() = prefs.getBoolean("darkMode", true)
         set(value) = prefs.edit { putBoolean("darkMode", value) }
 
+    var notifyChanges: Boolean
+        get() = prefs.getBoolean("notifyChanges", true)
+        set(value) = prefs.edit { putBoolean("notifyChanges", value) }
+
     var backgroundSync: Boolean
         get() = prefs.getBoolean("backgroundSync", false)
         set(value) = prefs.edit { putBoolean("backgroundSync", value) }

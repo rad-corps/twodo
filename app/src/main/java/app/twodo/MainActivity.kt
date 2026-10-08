@@ -20,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.twodo.model.Invite
 import app.twodo.model.ShareLink
+import app.twodo.sync.Notifications
 import app.twodo.sync.SyncService
 import app.twodo.ui.QrImage
 import app.twodo.ui.TwoDoRoot
@@ -29,6 +30,7 @@ import app.twodo.ui.TwoDoTheme
 class MainActivity : ComponentActivity() {
     private val app get() = application as TwoDoApp
     private val pendingInvite = mutableStateOf<Invite?>(null)
+    private val pendingOpen = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,7 +47,13 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(bars, bars)
             }
             TwoDoTheme(dark) {
-                TwoDoRoot(app, pendingInvite.value, onInviteHandled = { pendingInvite.value = null })
+                TwoDoRoot(
+                    app,
+                    pendingInvite.value,
+                    onInviteHandled = { pendingInvite.value = null },
+                    openRequest = pendingOpen.value,
+                    onOpenHandled = { pendingOpen.value = null },
+                )
             }
         }
     }
@@ -68,6 +76,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        intent?.getStringExtra(Notifications.EXTRA_LIST_ID)?.let { pendingOpen.value = it }
         intent?.dataString?.let(ShareLink::parse)?.let { pendingInvite.value = it }
         // A screenshot of someone's QR code shared to TwoDo from the gallery.
         if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true) {
