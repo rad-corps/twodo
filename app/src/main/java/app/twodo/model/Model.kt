@@ -73,12 +73,19 @@ data class TodoList(
     /** Local only: this device created the list (rather than joining it). */
     val createdHere: Boolean = false,
     val kind: SpaceKind = SpaceKind.LIST,
+    /** Local only: this device has had a complete copy of the list from someone (or created it). */
+    val fullSynced: Boolean = false,
+    /** Local only: newest relay event seen (unix seconds), to fetch only what's new next time. */
+    val relaySince: Long = 0,
     /** Every recorded change, by [AuditEntry.id]. Synced. */
     val audit: Map<String, AuditEntry> = emptyMap(),
 ) {
     val visibleItems: List<Item>
         get() = items.values.filter { !it.deleted }.sortedWith(compareBy({ it.position }, { it.id }))
 }
+
+/** Just joined and nothing received yet. */
+val TodoList.isJoining: Boolean get() = !createdHere && members.isEmpty() && items.isEmpty()
 
 /** Two devices edited the same item concurrently; [winner] (the later edit) was kept. */
 data class Conflict(

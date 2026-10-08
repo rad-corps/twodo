@@ -103,6 +103,7 @@ import app.twodo.model.Item
 import app.twodo.model.ShareLink
 import app.twodo.model.SpaceKind
 import app.twodo.model.TodoList
+import app.twodo.model.isJoining
 import app.twodo.sync.ListEvent
 import app.twodo.sync.Notifications
 import app.twodo.sync.SyncStatus
@@ -560,6 +561,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
     var dark by remember { mutableStateOf(app.identity.darkMode) }
     var notifyChanges by remember { mutableStateOf(app.identity.notifyChanges) }
     var showLog by remember { mutableStateOf(false) }
+    var direct by remember { mutableStateOf(app.identity.directConnections) }
     if (showLog) return ConnectionLogDialog(onDismiss = { showLog = false })
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -603,6 +605,13 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                     }
                     Switch(checked = background, onCheckedChange = { background = it })
                 }
+                if (BuildConfig.DEBUG) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Direct connections (debug)", Modifier.weight(1f))
+                        Switch(checked = direct, onCheckedChange = { direct = it })
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 TextButton(onClick = { showLog = true }, contentPadding = PaddingValues(0.dp)) { Text("Connection log") }
             }
@@ -612,6 +621,10 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                 if (name.isNotBlank()) app.setName(name)
                 app.setDarkMode(dark)
                 app.identity.notifyChanges = notifyChanges
+                if (direct != app.identity.directConnections) {
+                    app.identity.directConnections = direct
+                    app.sync.refresh()
+                }
                 if (background != app.identity.backgroundSync) app.setBackgroundSync(background)
                 onDismiss()
             }) { Text("Save") }
@@ -661,9 +674,6 @@ private fun ConnectionLogDialog(onDismiss: () -> Unit) {
 }
 
 /** "Groceries: 3 to do" / "Family diary: 2 today". */
-/** Just joined and nothing received yet. */
-private val TodoList.isJoining: Boolean get() = !createdHere && members.isEmpty() && items.isEmpty()
-
 /** Progress while a newly joined list or diary is found and fetched. */
 @Composable
 internal fun JoiningBanner(list: TodoList, status: SyncStatus) {
@@ -675,9 +685,9 @@ internal fun JoiningBanner(list: TodoList, status: SyncStatus) {
         Spacer(Modifier.height(8.dp))
         Text(
             when {
-                status.receiving || status.peerNames.isNotEmpty() -> "Getting the $what…"
+                status.receiving || status.peerNames.isNotEmpty() || status.relayPeerNames.isNotEmpty() -> "Getting the $what…"
                 !status.online -> "Waiting for an internet connection…"
-                status.trackersOnline == 0 -> "Connecting…"
+                status.trackersOnline == 0 && status.relaysOnline == 0 -> "Connecting…"
                 else -> "Looking for the other phone… TwoDo needs to be open there, or have Sync in background on."
             },
             style = MaterialTheme.typography.bodySmall,
@@ -771,7 +781,7 @@ internal fun flatBar() = TopAppBarDefaults.topAppBarColors(
 /** Small status dot: accent when connected to another device, grey otherwise. */
 @Composable
 internal fun SyncDot(status: SyncStatus?) {
-    val connected = !status?.peerNames.isNullOrEmpty()
+    val connected = !status?.peerNames.isNullOrEmpty() || !status?.relayPeerNames.isNullOrEmpty()
     Box(
         Modifier.size(8.dp).clip(CircleShape)
             .background(if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
@@ -783,8 +793,9 @@ internal const val HIGHLIGHT_MS = 2_500L
 internal fun SyncStatus?.summary(): String = when {
     this == null -> "Connecting…"
     !online && peerNames.isEmpty() -> "Offline"
-    trackersOnline == 0 && peerNames.isEmpty() -> "Connecting…"
-    peerNames.isEmpty() -> "Looking for other devices…"
+    trackersOnline == 0 && relaysOnline == 0 && peerNames.isEmpty() -> "Connecting…"
     peerNames.size == 1 -> "Connected to ${peerNames.single()}"
-    else -> "Connected to ${peerNames.size} devices"
+    peerNames.size > 1 -> "Connected to ${peerNames.size} devices"
+    relayPeerNames.isNotEmpty() -> "Syncing with ${relayPeerNames.joinToString(", ")} via relay"
+    else -> "Looking for other devices…"
 }

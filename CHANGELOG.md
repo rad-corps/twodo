@@ -5,6 +5,18 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Lists now sync even when the phones can't connect directly — and when one of them is off.**
+- When two phones can't reach each other (common on mobile data), changes now go through free public
+  Nostr relays instead. They're end-to-end encrypted: the relays only ever see scrambled data.
+- Changes made while the other phone is off are kept on the relays for 14 days and arrive as soon as it
+  comes back — the two phones no longer need to be online at the same time.
+- Joining works through the relays too: the new phone asks, and anyone in the list who's online sends it.
+- The status line shows "Syncing with Sam via relay" when that's the route being used.
+
+Also:
+- Fix: after a large sync, the last part could stay unsaved until the next sync.
+- Settings > Connection log also shows relay activity.
+
 ## v0.3.3 — 2026-10-08
 
 - **Much less background traffic and battery use.** When the other phone can't be reached, TwoDo now looks for it less and less often (up to every 2 minutes) instead of every 10 seconds, and looks quickly again as soon as you open the app, change network, or show a share code.

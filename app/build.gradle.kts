@@ -81,6 +81,8 @@ dependencies {
     implementation("io.getstream:stream-webrtc-android:1.3.10")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("sh.calvin.reorderable:reorderable:3.1.0")
+    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-android:0.24.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("fr.acinq.secp256k1:secp256k1-kmp-jni-jvm:0.24.0")
 }

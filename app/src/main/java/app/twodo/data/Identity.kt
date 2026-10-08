@@ -38,6 +38,11 @@ class Identity(context: Context) {
         set(value) = prefs.edit { putBoolean("notifyChanges", value) }
 
     /** On unless the user turned it off: keeps this phone reachable so others see changes straight away. */
+    /** Debug builds can turn direct connections off to exercise the relay route. */
+    var directConnections: Boolean
+        get() = prefs.getBoolean("directConnections", true)
+        set(value) = prefs.edit { putBoolean("directConnections", value) }
+
     var backgroundSync: Boolean
         get() = prefs.getBoolean("backgroundSync", true)
         set(value) = prefs.edit { putBoolean("backgroundSync", value) }

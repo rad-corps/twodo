@@ -159,6 +159,18 @@ class ListRepository(private val dir: File, private val identity: Identity) {
             RemoteResult(result.accepted.map { list.items[it.id] to it }, newAudit)
         }
 
+    /** Records that this device now has a complete copy of the list. */
+    suspend fun markFullSynced(listId: String): Unit = mutex.withLock {
+        val list = _lists.value[listId] ?: return
+        if (!list.fullSynced) saveSoon(list.copy(fullSynced = true))
+    }
+
+    /** Remembers the newest relay event seen, so the next start fetches only what's new. */
+    suspend fun setRelaySince(listId: String, createdAt: Long): Unit = mutex.withLock {
+        val list = _lists.value[listId] ?: return
+        if (createdAt > list.relaySince) saveSoon(list.copy(relaySince = createdAt))
+    }
+
     data class MemberUpdate(val isNew: Boolean, val firstContact: Boolean, val worthAnnouncing: Boolean)
 
     /** Records that [deviceId] (called [name]) is on the list. */
@@ -205,11 +217,20 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         _lists.value += list.id to list
         synchronized(unsaved) {
             unsaved += list.id
-            if (pendingWrite?.isActive == true) return
+            if (pendingWrite != null) return
             pendingWrite = writer.launch {
-                delay(SAVE_DELAY_MS)
-                val ids = synchronized(unsaved) { unsaved.toList().also { unsaved.clear() } }
-                ids.forEach { write(it) }
+                // Keep going until nothing is left: changes can arrive while a write is in progress.
+                while (true) {
+                    delay(SAVE_DELAY_MS)
+                    val ids = synchronized(unsaved) {
+                        if (unsaved.isEmpty()) {
+                            pendingWrite = null
+                            return@launch
+                        }
+                        unsaved.toList().also { unsaved.clear() }
+                    }
+                    ids.forEach { write(it) }
+                }
             }
         }
     }

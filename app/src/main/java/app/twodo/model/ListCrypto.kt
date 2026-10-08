@@ -29,6 +29,26 @@ class ListKeys(secret: String) {
         String(cipher.doFinal(bytes, IV_BYTES, bytes.size - IV_BYTES))
     }.getOrNull()
 
+    /** Compresses then encrypts; for relay messages, where size matters. */
+    fun encryptCompressed(plaintext: String): String {
+        val zipped = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.GZIPOutputStream(out).use { it.write(plaintext.toByteArray()) }
+        }.toByteArray()
+        val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+        return Base64.getEncoder().encodeToString(iv + cipher.doFinal(zipped))
+    }
+
+    /** Reverses [encryptCompressed]; null if it wasn't made with this list's key. */
+    fun decryptCompressed(message: String): String? = runCatching {
+        val bytes = Base64.getDecoder().decode(message)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, bytes, 0, IV_BYTES))
+        val zipped = cipher.doFinal(bytes, IV_BYTES, bytes.size - IV_BYTES)
+        java.util.zip.GZIPInputStream(zipped.inputStream()).use { String(it.readBytes()) }
+    }.getOrNull()
+
     companion object {
         private const val IV_BYTES = 12
         private val random = SecureRandom()

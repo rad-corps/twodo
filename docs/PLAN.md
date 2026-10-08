@@ -42,6 +42,19 @@ ListSwarm ── finds peers via public WebTorrent trackers, connects with WebRT
   A TURN relay is the standard fix — left as an optional setting for later.
 - The transport sits behind `ListSwarm`, so it could later be replaced by Hyperswarm, iroh, etc.
 
+### Relays (Nostr)
+
+Direct connections fail on some networks (often mobile data), and only work while both phones are
+online. So every list also uses **free public Nostr relays** (`RELAYS` in `RelayPool.kt`):
+
+- Each list has its own Nostr key, derived from the list secret; all members publish and subscribe with it.
+- Message contents are the same sync messages as over WebRTC, gzipped and AES-GCM encrypted with the list key.
+- Edits and "leave" are stored events (kind 4333) with a 14-day `expiration`, so a phone that was off
+  catches up when it returns. Hello and whole-list replies are live-only (kind 24333).
+- A phone that has never had a full copy (e.g. just joined) asks for one in its hello; anyone online replies.
+- Each relay gets its own paced send queue, slowing down and retrying if it reports rate limiting.
+- Relays see the list's Nostr key, message sizes and timing, and IP addresses — not the content.
+
 ### Security
 
 - Each list has a random 256-bit secret, carried in the QR code / link (`twodo://join?id=…&name=…&k=…`).
