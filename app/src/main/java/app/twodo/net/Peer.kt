@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import org.webrtc.CandidatePairChangeEvent
 import org.webrtc.DataChannel
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
@@ -97,7 +98,11 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         }
         val sdp = pc.localDescription?.description ?: error("No local description")
         val types = Regex("""typ (\w+)""").findAll(sdp).map { it.groupValues[1] }.groupingBy { it }.eachCount()
-        Log.d("TwoDoSync", "peer ${hashCode().toString(16)} sdp ready in ${SystemClock.elapsedRealtime() - started}ms, candidates $types")
+        val took = SystemClock.elapsedRealtime() - started
+        // Only the slow or unusual ones are worth a line in the connection log.
+        if (took > SLOW_GATHER_MS || "srflx" !in types) {
+            SyncLog.add("peer ${hashCode().toString(16)} sdp ready in ${took}ms, candidates $types")
+        }
         return sdp
     }
 
@@ -138,7 +143,7 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         }
 
         override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
-            Log.d("TwoDoSync", "peer ${this@Peer.hashCode().toString(16)} connection $state")
+            SyncLog.add("peer ${this@Peer.hashCode().toString(16)} connection $state")
             if (state == PeerConnection.PeerConnectionState.FAILED || state == PeerConnection.PeerConnectionState.CLOSED) {
                 scope.launch { events.onClosed(this@Peer) }
             }
@@ -150,7 +155,7 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
 
         override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
         override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
-            Log.d("TwoDoSync", "peer ${this@Peer.hashCode().toString(16)} ice $state")
+            SyncLog.add("peer ${this@Peer.hashCode().toString(16)} ice $state")
         }
         override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
         override fun onIceCandidate(candidate: IceCandidate) {
@@ -160,10 +165,16 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         override fun onAddStream(stream: MediaStream) = Unit
         override fun onRemoveStream(stream: MediaStream) = Unit
         override fun onRenegotiationNeeded() = Unit
+
+        override fun onSelectedCandidatePairChanged(event: CandidatePairChangeEvent) {
+            fun type(c: IceCandidate) = Regex(""" typ (\w+)""").find(c.sdp)?.groupValues?.get(1) ?: "?"
+            SyncLog.add("peer ${this@Peer.hashCode().toString(16)} path: ${type(event.local)} -> ${type(event.remote)}")
+        }
     }
 
     private companion object {
         const val GATHER_CAP_MS = 1_500L
+        const val SLOW_GATHER_MS = 400L
         /** Other interfaces' public addresses usually follow within a moment of the first. */
         const val PUBLIC_ADDRESS_GRACE_MS = 150L
 

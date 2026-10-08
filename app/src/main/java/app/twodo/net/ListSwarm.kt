@@ -17,7 +17,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import okhttp3.OkHttpClient
 import org.webrtc.PeerConnectionFactory
 
 /**
@@ -47,16 +46,16 @@ interface SwarmEvents {
  */
 class ListSwarm(
     val listId: String,
-    private val topic: String,
+    val topic: String,
     private val myPeerId: String,
     private val factory: PeerConnectionFactory,
-    http: OkHttpClient,
+    private val pool: TrackerPool,
     private val scope: CoroutineScope,
     private val events: SwarmEvents,
 ) : PeerEvents {
     private class PendingOffer(val id: String, val peer: Peer, val sdp: String)
 
-    private val trackers = TRACKERS.map { TrackerClient(it, http, scope, ::onTrackerOpen, ::onTrackerMessage) }
+    private val trackers get() = pool.clients
     private val pending = mutableMapOf<String, PendingOffer>()
     /** Offers prepared in advance, ready to announce. */
     private val ready = ArrayDeque<PendingOffer>()
@@ -67,18 +66,43 @@ class ListSwarm(
     private val startedAt = SystemClock.elapsedRealtime()
 
     /** Timing log for diagnosing how long finding and syncing with peers takes (`adb logcat -s TwoDoSync`). */
-    fun trace(message: String) = Log.d("TwoDoSync", "[${topic.take(4)}] +${SystemClock.elapsedRealtime() - startedAt}ms $message")
+    fun trace(message: String) = SyncLog.add("[${topic.take(4)}] +${SystemClock.elapsedRealtime() - startedAt}ms $message")
 
     val openPeers: List<Peer> get() = peers.values.filter { it.isOpen }
-    val trackersOnline: Int get() = trackers.count { it.isOpen }
+    val trackersOnline: Int get() = pool.online
+
+    /**
+     * Someone is being invited right now (the share dialog is open): announce every few seconds so
+     * their phone finds this one straight away.
+     */
+    var eager = false
+        set(value) {
+            if (field == value) return
+            field = value
+            trace(if (value) "sharing: announcing often" else "sharing ended")
+            startAnnouncing(now = value)
+        }
 
     fun start() {
+        trace("started")
         prepareOffers()
-        trackers.forEach { it.connect() }
+        pool.register(this)
+        startAnnouncing(now = true)
+    }
+
+    private fun startAnnouncing(now: Boolean) {
+        announceJob?.cancel()
         announceJob = scope.launch {
+            if (now) announce()
             while (isActive) {
                 // Look harder while nobody's connected; just stay discoverable once someone is.
-                delay(if (openPeers.isEmpty()) SEARCH_INTERVAL_MS else ANNOUNCE_INTERVAL_MS)
+                delay(
+                    when {
+                        eager -> EAGER_INTERVAL_MS
+                        openPeers.isEmpty() -> SEARCH_INTERVAL_MS
+                        else -> ANNOUNCE_INTERVAL_MS
+                    },
+                )
                 announce()
             }
         }
@@ -87,7 +111,17 @@ class ListSwarm(
     fun stop() {
         stopped = true
         announceJob?.cancel()
-        trackers.forEach { it.close() }
+        pool.unregister(this)
+        // Leave the tracker's room for this list (the shared connections stay open for other lists).
+        val leave = buildJsonObject {
+            put("action", "announce")
+            put("info_hash", topic)
+            put("peer_id", myPeerId)
+            put("event", "stopped")
+            put("numwant", 0)
+            putJsonArray("offers") {}
+        }
+        trackers.forEach { it.send(leave) }
         preparing?.cancel()
         (pending.values + ready).forEach { it.peer.close() }
         pending.clear()
@@ -96,9 +130,8 @@ class ListSwarm(
         peers.clear()
     }
 
-    /** The network changed: reconnect trackers now and look for peers again. */
+    /** The network changed: look for peers again (the pool reconnects the trackers). */
     fun kick() {
-        trackers.forEach { it.kick() }
         scope.launch { announce() }
     }
 
@@ -111,7 +144,7 @@ class ListSwarm(
         }
     }
 
-    private suspend fun onTrackerOpen(tracker: TrackerClient) {
+    suspend fun onTrackerOpen(tracker: TrackerClient) {
         trace("tracker open ${tracker.url}")
         events.onChanged(this)
         announce(listOf(tracker))
@@ -177,7 +210,7 @@ class ListSwarm(
         peers.values.filter { !it.isOpen && it.createdAt < cutoff }.forEach { drop(it) }
     }
 
-    private suspend fun onTrackerMessage(tracker: TrackerClient, message: JsonObject) {
+    suspend fun onTrackerMessage(tracker: TrackerClient, message: JsonObject) {
         if (message.string("info_hash") != topic) return
         val from = message.string("peer_id") ?: return
         val offerId = message.string("offer_id") ?: return
@@ -265,6 +298,7 @@ class ListSwarm(
         private const val TAG = "TwoDo"
         private const val ANNOUNCE_INTERVAL_MS = 30_000L
         private const val SEARCH_INTERVAL_MS = 10_000L
+        private const val EAGER_INTERVAL_MS = 3_000L
         private const val CONNECT_TIMEOUT_MS = 5_000L
         private const val OFFER_TTL_MS = 60_000L
         private const val OFFERS_PER_ANNOUNCE = 3

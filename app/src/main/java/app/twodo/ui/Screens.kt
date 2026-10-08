@@ -2,7 +2,11 @@
 
 package app.twodo.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
+import android.os.Build
+import android.widget.Toast
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,6 +36,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,6 +75,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -83,12 +89,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.twodo.R
+import app.twodo.BuildConfig
 import app.twodo.TwoDoApp
+import app.twodo.net.SyncLog
 import app.twodo.model.Invite
 import app.twodo.model.Item
 import app.twodo.model.ShareLink
@@ -394,7 +403,7 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
             }
         },
     )
-    if (sharing) ShareDialog(list, onDismiss = { sharing = false })
+    if (sharing) ShareDialog(app, list, onDismiss = { sharing = false })
     if (confirmRemove) {
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
@@ -436,8 +445,13 @@ internal fun rememberRemoteHighlights(app: TwoDoApp, listId: String): Map<String
 }
 
 @Composable
-internal fun ShareDialog(list: TodoList, onDismiss: () -> Unit) {
+internal fun ShareDialog(app: TwoDoApp, list: TodoList, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    // Look for the newcomer every few seconds while the code is on screen.
+    DisposableEffect(list.id) {
+        app.sync.setSharing(list.id, true)
+        onDispose { app.sync.setSharing(list.id, false) }
+    }
     // Whoever connects to this list for the first time while the dialog is open.
     val membersBefore = remember(list.id) { list.members.keys }
     val newcomers = list.members.filterKeys { it !in membersBefore }.values
@@ -545,6 +559,8 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
     var background by remember { mutableStateOf(app.identity.backgroundSync) }
     var dark by remember { mutableStateOf(app.identity.darkMode) }
     var notifyChanges by remember { mutableStateOf(app.identity.notifyChanges) }
+    var showLog by remember { mutableStateOf(false) }
+    if (showLog) return ConnectionLogDialog(onDismiss = { showLog = false })
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
@@ -587,6 +603,8 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                     }
                     Switch(checked = background, onCheckedChange = { background = it })
                 }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = { showLog = true }, contentPadding = PaddingValues(0.dp)) { Text("Connection log") }
             }
         },
         confirmButton = {
@@ -599,6 +617,46 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
             }) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Recent connection events with timings, to see why connecting is slow; Copy to send them on. */
+@Composable
+private fun ConnectionLogDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var lines by remember { mutableStateOf(SyncLog.snapshot()) }
+    // Keep it live while open.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            lines = SyncLog.snapshot()
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Connection log") },
+        text = {
+            if (lines.isEmpty()) {
+                Text("Nothing yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                val listState = rememberLazyListState()
+                LaunchedEffect(lines.size) { listState.scrollToItem(lines.size - 1) }
+                LazyColumn(Modifier.heightIn(max = 420.dp), state = listState) {
+                    items(lines) {
+                        Text(it, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace))
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            TextButton(onClick = {
+                val header = "TwoDo ${BuildConfig.VERSION_NAME} on ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}"
+                val clipboard = context.getSystemService(ClipboardManager::class.java)
+                clipboard.setPrimaryClip(ClipData.newPlainText("TwoDo connection log", (listOf(header) + lines).joinToString("\n")))
+                Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+            }) { Text("Copy") }
+        },
     )
 }
 

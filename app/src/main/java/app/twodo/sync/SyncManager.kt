@@ -3,6 +3,7 @@ package app.twodo.sync
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.SystemClock
 import android.util.Log
 import app.twodo.data.Identity
@@ -14,6 +15,8 @@ import app.twodo.model.describeChange
 import app.twodo.net.ListSwarm
 import app.twodo.net.Peer
 import app.twodo.net.SwarmEvents
+import app.twodo.net.SyncLog
+import app.twodo.net.TrackerPool
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -86,6 +89,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     }
 
     private val swarms = mutableMapOf<String, ListSwarm>()
+    /** Shared tracker connections, open while anything is syncing. */
+    private var pool: TrackerPool? = null
     private val keys = mutableMapOf<String, ListKeys>()
     private var users = 0
     private var online = true
@@ -125,6 +130,15 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 override fun onAvailable(network: Network) {
                     scope.launch {
                         online = true
+                        val caps = connectivity.getNetworkCapabilities(network)
+                        val kind = when {
+                            caps == null -> "unknown"
+                            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+                            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile data"
+                            else -> "other"
+                        }
+                        SyncLog.add("network available: $kind")
+                        pool?.kick()
                         swarms.values.forEach { it.kick() }
                         publishStatus()
                     }
@@ -161,10 +175,17 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
             swarms.remove(id)?.stop()
             keys.remove(id)
         }
+        if (users == 0) {
+            pool?.close()
+            pool = null
+            return publishStatus()
+        }
+        // Connect to the trackers as soon as the app is in use, even before any list needs them.
+        val pool = pool ?: TrackerPool(http, scope).also { pool = it; it.start() }
         for ((id, list) in wanted) {
             if (id in swarms) continue
             val listKeys = ListKeys(list.secret).also { keys[id] = it }
-            swarms[id] = ListSwarm(id, listKeys.topic, peerId, factory, http, scope, this).also { it.start() }
+            swarms[id] = ListSwarm(id, listKeys.topic, peerId, factory, pool, scope, this).also { it.start() }
         }
         publishStatus()
     }
@@ -246,6 +267,11 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
             delay(500) // let the message go out before the swarm closes
             repo.removeList(listId)
         }
+    }
+
+    /** While a list's share dialog is open, that list looks for newcomers every few seconds. */
+    fun setSharing(listId: String, sharing: Boolean) {
+        scope.launch { swarms[listId]?.eager = sharing }
     }
 
     /** Tells connected devices about this user's new name. */

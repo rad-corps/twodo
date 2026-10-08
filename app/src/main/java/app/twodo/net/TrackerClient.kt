@@ -77,7 +77,7 @@ class TrackerClient(
         private fun dropped(webSocket: WebSocket, error: Throwable?) {
             scope.launch {
                 if (webSocket !== socket) return@launch
-                Log.d(TAG, "Tracker $url disconnected: ${error?.message}")
+                SyncLog.add("tracker $url disconnected: ${error?.message}")
                 socket = null
                 isOpen = false
                 if (closed) return@launch
