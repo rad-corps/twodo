@@ -3,6 +3,7 @@
 package app.twodo.ui
 
 import android.content.Intent
+import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
@@ -79,6 +80,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.twodo.R
 import app.twodo.TwoDoApp
 import app.twodo.model.Invite
+import app.twodo.model.Item
 import app.twodo.model.ShareLink
 import app.twodo.model.TodoList
 import app.twodo.sync.SyncStatus
@@ -291,13 +293,21 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
                                     uncheckedColor = MaterialTheme.colorScheme.outline,
                                 ),
                             )
-                            Text(
-                                item.text,
-                                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
-                                style = MaterialTheme.typography.bodyLarge,
-                                textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-                                color = if (item.checked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
-                            )
+                            Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
+                                Text(
+                                    item.text,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    textDecoration = if (item.checked) TextDecoration.LineThrough else null,
+                                    color = if (item.checked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                                )
+                                if (item.checked) {
+                                    Text(
+                                        tickedBy(item, app.identity.deviceId),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                            }
                             IconButton(onClick = { scope.launch { app.repo.deleteItem(list.id, item.id) } }) {
                                 Icon(Icons.Default.Close, "Delete", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
                             }
@@ -418,8 +428,8 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("This phone's name") },
-                    supportingText = { Text("Shown to other devices, e.g. in conflict messages") },
+                    label = { Text("Your name") },
+                    supportingText = { Text("Shown to others next to items you tick") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -466,6 +476,18 @@ private fun TextPromptDialog(title: String, label: String, confirm: String, onDi
         confirmButton = { TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** e.g. "Adam · 5 min. ago" — who ticked the item and when. */
+private fun tickedBy(item: Item, myDeviceId: String): String {
+    val who = if (item.version.by == myDeviceId) "You" else item.editor
+    val now = System.currentTimeMillis()
+    val time = if (now - item.version.ts < DateUtils.MINUTE_IN_MILLIS) {
+        "just now"
+    } else {
+        DateUtils.getRelativeTimeSpanString(item.version.ts, now, DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE)
+    }
+    return "$who · $time"
 }
 
 @Composable
