@@ -40,10 +40,14 @@ android {
             versionNameSuffix = "-dev"
         }
         release {
-            isMinifyEnabled = false
+            // R8 makes Compose noticeably faster (and the APK smaller).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = releaseSigning
             // Every phone from the last several years is 64-bit ARM; skipping other ABIs cuts the APK size.
-            ndk { abiFilters += "arm64-v8a" }
+            // -Ptwodo.allAbis keeps them all, e.g. to try a release build on an x86_64 emulator.
+            if (!providers.gradleProperty("twodo.allAbis").isPresent) ndk { abiFilters += "arm64-v8a" }
         }
     }
 

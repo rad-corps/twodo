@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -110,7 +111,8 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
     }
     var picking by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Item?>(null) }
-    val day = dateOf(pager.currentPage)
+    // Only the header and add bar read the current page, so a swipe recomposes just those, not the screen.
+    fun currentDay() = dateOf(pager.currentPage)
 
     fun goTo(date: LocalDate) {
         scope.launch {
@@ -126,13 +128,13 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             DayHeader(
-                day = day,
-                onPrevious = { goTo(day.minusDays(1)) },
-                onNext = { goTo(day.plusDays(1)) },
+                pager = pager,
+                onPrevious = { goTo(currentDay().minusDays(1)) },
+                onNext = { goTo(currentDay().plusDays(1)) },
                 onPick = { picking = true },
                 onToday = { goTo(LocalDate.now()) },
             )
-            AddEntryBar(day) { text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
+            AddEntryBar(pager) { day, text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
             HorizontalPager(
                 state = pager,
                 modifier = Modifier.weight(1f),
@@ -145,7 +147,7 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
         }
     }
 
-    if (picking) DayPickerDialog(day, onDismiss = { picking = false }) { picking = false; goTo(it) }
+    if (picking) DayPickerDialog(currentDay(), onDismiss = { picking = false }) { picking = false; goTo(it) }
     editing?.let { entry ->
         // Show the latest version if it changed while the dialog was open.
         val current = list.items[entry.id]?.takeIf { !it.deleted } ?: return@let
@@ -158,7 +160,7 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
             onSave = { text, date, time ->
                 editing = null
                 scope.launch { app.repo.editEntry(list.id, current.id, text, date, time) }
-                if (date != day) goTo(date)
+                if (date != currentDay()) goTo(date)
             },
             onDelete = {
                 editing = null
@@ -170,7 +172,8 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
 
 /** "‹  Thursday 8 October  ›" with "Today" / "In 3 days" underneath; tap the date to pick another. */
 @Composable
-private fun DayHeader(day: LocalDate, onPrevious: () -> Unit, onNext: () -> Unit, onPick: () -> Unit, onToday: () -> Unit) {
+private fun DayHeader(pager: PagerState, onPrevious: () -> Unit, onNext: () -> Unit, onPick: () -> Unit, onToday: () -> Unit) {
+    val day = dateOf(pager.currentPage)
     val today = LocalDate.now()
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onPrevious) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous day") }
@@ -205,7 +208,8 @@ private fun relativeDay(day: LocalDate, today: LocalDate): String {
 }
 
 @Composable
-private fun AddEntryBar(day: LocalDate, onAdd: (String, String?) -> Unit) {
+private fun AddEntryBar(pager: PagerState, onAdd: (LocalDate, String, String?) -> Unit) {
+    val day = dateOf(pager.currentPage)
     var text by rememberSaveable { mutableStateOf("") }
     var time by rememberSaveable { mutableStateOf<String?>(null) }
     var pickingTime by remember { mutableStateOf(false) }
@@ -213,7 +217,7 @@ private fun AddEntryBar(day: LocalDate, onAdd: (String, String?) -> Unit) {
 
     fun add() {
         if (text.isBlank()) return
-        onAdd(text, time)
+        onAdd(day, text, time)
         text = ""
         time = null
     }
