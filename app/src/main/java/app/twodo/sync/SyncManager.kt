@@ -58,7 +58,16 @@ sealed class SyncMessage {
     data class Leave(val deviceId: String) : SyncMessage()
 }
 
-data class SyncStatus(val trackersOnline: Int = 0, val peerNames: List<String> = emptyList())
+/**
+ * [online]: the phone has a network connection. [receiving]: a first sync with someone is under way
+ * (e.g. just after joining).
+ */
+data class SyncStatus(
+    val trackersOnline: Int = 0,
+    val peerNames: List<String> = emptyList(),
+    val receiving: Boolean = false,
+    val online: Boolean = true,
+)
 
 /**
  * Keeps one [ListSwarm] per list while anything needs syncing (the app is visible, the background
@@ -79,6 +88,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     private val swarms = mutableMapOf<String, ListSwarm>()
     private val keys = mutableMapOf<String, ListKeys>()
     private var users = 0
+    private var online = true
     /** Peers whose first full sync is just us joining, not changes worth announcing. */
     private val firstSyncPeers = mutableSetOf<Peer>()
 
@@ -108,10 +118,23 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 swarm.openPeers.forEach { sendItems(swarm, it, listOf(edit.item), listOfNotNull(edit.audit)) }
             }
         }
-        appContext.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(
+        val connectivity = appContext.getSystemService(ConnectivityManager::class.java)
+        online = connectivity.activeNetwork != null
+        connectivity.registerDefaultNetworkCallback(
             object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    scope.launch { swarms.values.forEach { it.kick() } }
+                    scope.launch {
+                        online = true
+                        swarms.values.forEach { it.kick() }
+                        publishStatus()
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    scope.launch {
+                        online = connectivity.activeNetwork != null
+                        publishStatus()
+                    }
                 }
             },
         )
@@ -185,7 +208,13 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 }
                 // A device's first full sync (possibly several chunks) is just us joining, not news.
                 val quiet = message.full && peer in firstSyncPeers
-                if (message.full && message.last) firstSyncPeers -= peer
+                if (message.full && message.last && firstSyncPeers.remove(peer)) {
+                    publishStatus()
+                    val list = repo.lists.value[swarm.listId]
+                    if (list != null && !list.createdHere) {
+                        _events.tryEmit(ListEvent.JoinedList(list.id, list.name, peer.deviceName ?: "the other phone"))
+                    }
+                }
                 if (!quiet) announceChanges(swarm.listId, result.changes)
             }
             is SyncMessage.Leave -> {
@@ -261,7 +290,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     private fun publishStatus() {
         _status.value = swarms.mapValues { (_, swarm) ->
-            SyncStatus(swarm.trackersOnline, swarm.openPeers.map { it.deviceName ?: "Unknown device" })
+            val open = swarm.openPeers
+            SyncStatus(swarm.trackersOnline, open.map { it.deviceName ?: "Unknown device" }, receiving = open.any { it in firstSyncPeers }, online = online)
         }
     }
 

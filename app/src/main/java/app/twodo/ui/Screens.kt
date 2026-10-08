@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +55,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -120,6 +122,17 @@ fun TwoDoRoot(
     var askName by remember { mutableStateOf(!app.identity.hasName) }
 
     LaunchedEffect(Unit) { app.repo.conflicts.collect { snackbar.showSnackbar(it.describe()) } }
+    // Joins and leaves get a pull-down notification too; this is the in-app version.
+    LaunchedEffect(Unit) {
+        app.sync.events.collect { event ->
+            when (event) {
+                is ListEvent.Joined -> "${event.who} joined “${event.listName}”"
+                is ListEvent.Left -> "${event.who} left “${event.listName}”"
+                is ListEvent.JoinedList -> "Joined “${event.listName}” with ${event.who}"
+                is ListEvent.Changed -> null
+            }?.let { snackbar.showSnackbar(it) }
+        }
+    }
     LaunchedEffect(openRequest) {
         if (openRequest != null) {
             openListId = openRequest
@@ -267,6 +280,7 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            JoiningBanner(list, status)
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = newText,
@@ -424,6 +438,9 @@ internal fun rememberRemoteHighlights(app: TwoDoApp, listId: String): Map<String
 @Composable
 internal fun ShareDialog(list: TodoList, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    // Whoever connects to this list for the first time while the dialog is open.
+    val membersBefore = remember(list.id) { list.members.keys }
+    val newcomers = list.members.filterKeys { it !in membersBefore }.values
     val link = remember(list.id) { ShareLink.build(list) }
     val qr = remember(link) { BarcodeEncoder().encodeBitmap(link, BarcodeFormat.QR_CODE, 720, 720).asImageBitmap() }
     AlertDialog(
@@ -434,6 +451,24 @@ internal fun ShareDialog(list: TodoList, onDismiss: () -> Unit) {
                 Image(qr, "QR code for this list", Modifier.size(260.dp))
                 Spacer(Modifier.height(12.dp))
                 Text("Scan this with TwoDo on the other phone (Join list). Anyone with this code can see and edit the list.")
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (newcomers.isEmpty()) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Waiting for someone to scan or open the link…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text(
+                            "✓ ${newcomers.joinToString(", ")} joined",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
@@ -568,7 +603,32 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
 }
 
 /** "Groceries: 3 to do" / "Family diary: 2 today". */
-private fun TodoList.summary(): String = when (kind) {
+/** Just joined and nothing received yet. */
+private val TodoList.isJoining: Boolean get() = !createdHere && members.isEmpty() && items.isEmpty()
+
+/** Progress while a newly joined list or diary is found and fetched. */
+@Composable
+internal fun JoiningBanner(list: TodoList, status: SyncStatus) {
+    // The phone that shares also does a first sync with a newcomer; that side gets the share dialog's status instead.
+    if (!list.isJoining && !(status.receiving && !list.createdHere)) return
+    val what = if (list.kind == SpaceKind.DIARY) "diary" else "list"
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = MaterialTheme.colorScheme.surfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            when {
+                status.receiving || status.peerNames.isNotEmpty() -> "Getting the $what…"
+                !status.online -> "Waiting for an internet connection…"
+                status.trackersOnline == 0 -> "Connecting…"
+                else -> "Looking for the other phone… TwoDo needs to be open there, or have Sync in background on."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun TodoList.summary(): String = if (isJoining) "Joining…" else when (kind) {
     SpaceKind.DIARY -> {
         val today = java.time.LocalDate.now().toString()
         val count = items.values.count { !it.deleted && it.date == today }
@@ -663,7 +723,9 @@ internal fun SyncDot(status: SyncStatus?) {
 internal const val HIGHLIGHT_MS = 2_500L
 
 internal fun SyncStatus?.summary(): String = when {
-    this == null || trackersOnline == 0 && peerNames.isEmpty() -> "Offline"
+    this == null -> "Connecting…"
+    !online && peerNames.isEmpty() -> "Offline"
+    trackersOnline == 0 && peerNames.isEmpty() -> "Connecting…"
     peerNames.isEmpty() -> "Looking for other devices…"
     peerNames.size == 1 -> "Connected to ${peerNames.single()}"
     else -> "Connected to ${peerNames.size} devices"

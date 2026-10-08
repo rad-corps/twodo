@@ -8,6 +8,9 @@ sealed interface ListEvent {
     data class Joined(override val listId: String, override val listName: String, val who: String) : ListEvent
     data class Left(override val listId: String, override val listName: String, val who: String) : ListEvent
 
+    /** This device finished joining a shared list: everything from [who] has arrived. */
+    data class JoinedList(override val listId: String, override val listName: String, val who: String) : ListEvent
+
     /** [lines] like "ticked Milk"; [itemIds] are the items affected. */
     data class Changed(
         override val listId: String,

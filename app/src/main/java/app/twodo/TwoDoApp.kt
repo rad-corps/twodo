@@ -50,6 +50,8 @@ class TwoDoApp : Application() {
                     // Changes are highlighted in the app when it's open; otherwise one quiet notification per list.
                     is ListEvent.Changed ->
                         if (visibleActivities == 0 && identity.notifyChanges) Notifications.addChanges(this@TwoDoApp, event)
+                    // Shown in the app (it's the joining phone, so the user is looking at it).
+                    is ListEvent.JoinedList -> Unit
                 }
             }
         }

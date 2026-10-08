@@ -131,6 +131,7 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            JoiningBanner(list, status)
             DayHeader(
                 pager = pager,
                 onPrevious = { goTo(currentDay().minusDays(1)) },
