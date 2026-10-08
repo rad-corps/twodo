@@ -380,7 +380,7 @@ private fun ShareDialog(list: TodoList, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
         dismissButton = {
             TextButton(onClick = {
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link)
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ShareLink.message(list))
                 context.startActivity(Intent.createChooser(send, "Send link"))
             }) { Text("Send link") }
         },

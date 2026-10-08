@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Join a TwoDo list</title>
+<style>
+  :root { --bg: #121413; --fg: #e2e4e2; --muted: #a9afac; --accent: #8fc9b4; --on-accent: #0f201a; --line: #2b302e; }
+  @media (prefers-color-scheme: light) { :root { --bg: #fafaf8; --fg: #1b1d1c; --muted: #575e5b; --accent: #2e6b5e; --on-accent: #fff; --line: #e1e4e2; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 24px 16px; }
+  main { width: 100%; max-width: 380px; text-align: center; }
+  h1 { font-size: 1.4rem; font-weight: 500; margin: 0 0 4px; }
+  p { color: var(--muted); margin: 0 0 24px; }
+  a.button, button { display: block; width: 100%; padding: 14px; border-radius: 12px; font: inherit; text-decoration: none;
+                     border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; margin-bottom: 12px; }
+  a.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 500; }
+  small { display: block; color: var(--muted); margin-top: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Join a TwoDo list</h1>
+  <p id="sub">Open this list in TwoDo to see and tick it together.</p>
+  <a class="button primary" id="open" href="#">Open in TwoDo</a>
+  <button id="copy" type="button">Copy link to paste in TwoDo</button>
+  <a class="button" href="https://github.com/rad-corps/twodo/releases/latest">Don't have TwoDo? Get it free</a>
+  <small>The list's key stays in this link and on your phones. It's never sent to this website.</small>
+</main>
+<script>
+  const params = new URLSearchParams(location.hash.slice(1));
+  const id = params.get('id'), key = params.get('k'), name = params.get('name') || 'Shared list';
+  const releases = 'https://github.com/rad-corps/twodo/releases/latest';
+  if (!id || !key) {
+    document.getElementById('title').textContent = 'This link is incomplete';
+    document.getElementById('sub').textContent = 'Ask for the list to be shared again.';
+    document.getElementById('open').style.display = 'none';
+    document.getElementById('copy').style.display = 'none';
+  } else {
+    document.getElementById('title').textContent = 'Join “' + name + '”';
+    const query = 'join?id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name) + '&k=' + encodeURIComponent(key);
+    // Chrome on Android understands intent: links and falls back to the download page if TwoDo isn't installed.
+    document.getElementById('open').href = /Android/i.test(navigator.userAgent)
+      ? 'intent://' + query + '#Intent;scheme=twodo;package=app.twodo;S.browser_fallback_url=' + encodeURIComponent(releases) + ';end'
+      : 'twodo://' + query;
+    document.getElementById('copy').onclick = async (e) => {
+      try { await navigator.clipboard.writeText(location.href); e.target.textContent = 'Copied — paste it in TwoDo › Join list'; }
+      catch { e.target.textContent = 'Copy the address from the address bar'; }
+    };
+  }
+</script>
+</body>
+</html>
