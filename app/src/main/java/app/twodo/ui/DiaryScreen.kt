@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -62,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -78,6 +80,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.abs
@@ -109,6 +112,7 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
             .groupBy { it.date!! }
             .mapValues { (_, entries) -> entries.sortedWith(entryOrder) }
     }
+    val daysWithEntries = remember(byDay) { byDay.keys }
     var picking by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Item?>(null) }
     // Only the header and add bar read the current page, so a swipe recomposes just those, not the screen.
@@ -134,6 +138,7 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
                 onPick = { picking = true },
                 onToday = { goTo(LocalDate.now()) },
             )
+            WeekStrip(pager, daysWithEntries, onPick = ::goTo)
             AddEntryBar(pager) { day, text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
             HorizontalPager(
                 state = pager,
@@ -193,6 +198,47 @@ private fun DayHeader(pager: PagerState, onPrevious: () -> Unit, onNext: () -> U
         }
         if (day != today) TextButton(onClick = onToday) { Text("Today") }
         IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next day") }
+    }
+}
+
+/** Mon–Sun of the shown day's week; dots mark days with entries. Tap a day to go to it. */
+@Composable
+private fun WeekStrip(pager: PagerState, daysWithEntries: Set<String>, onPick: (LocalDate) -> Unit) {
+    val day = dateOf(pager.currentPage)
+    val today = LocalDate.now()
+    val monday = day.minusDays((day.dayOfWeek.value - 1).toLong())
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        for (offset in 0L..6L) {
+            val date = monday.plusDays(offset)
+            val selected = date == day
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                    .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                    .clickable { onPick(date) }
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.ENGLISH),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+                Text(
+                    date.dayOfMonth.toString(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when {
+                        selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                        date == today -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
+                )
+                Box(
+                    Modifier.padding(top = 3.dp).size(4.dp).clip(CircleShape).background(
+                        if (date.toString() in daysWithEntries) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    ),
+                )
+            }
+        }
     }
 }
 
