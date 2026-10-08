@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -16,9 +18,26 @@ android {
         versionName = "0.1.0"
     }
 
+    // Release signing key lives outside the repo; see README. Without it, release builds are unsigned.
+    val keystoreFile = file("${System.getProperty("user.home")}/.twodo/keystore.properties")
+    val releaseSigning = if (keystoreFile.exists()) {
+        val props = Properties().apply { keystoreFile.inputStream().use(::load) }
+        signingConfigs.create("release") {
+            storeFile = file(props.getProperty("storeFile"))
+            storePassword = props.getProperty("storePassword")
+            keyAlias = props.getProperty("keyAlias")
+            keyPassword = props.getProperty("keyPassword")
+        }
+    } else {
+        null
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = releaseSigning
+            // Every phone from the last several years is 64-bit ARM; skipping other ABIs cuts the APK size.
+            ndk { abiFilters += "arm64-v8a" }
         }
     }
 

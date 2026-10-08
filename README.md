@@ -14,6 +14,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Or open the folder in Android Studio.
 
+### Release build (for installing on real phones)
+
+```
+./gradlew assembleRelease
+```
+
+Produces `app/build/outputs/apk/release/app-release.apk` (64-bit ARM only, ~20 MB), signed with the key
+described in `~/.twodo/keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`).
+**Back up `~/.twodo/`** — updates must be signed with the same key, or the app has to be uninstalled
+(losing its lists) before a new version can be installed.
+
 ## Using it
 
 1. Phone A: **New list**, add items, tap **Share** to show the QR code.
