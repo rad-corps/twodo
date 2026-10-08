@@ -37,7 +37,8 @@ class Identity(context: Context) {
         get() = prefs.getBoolean("notifyChanges", true)
         set(value) = prefs.edit { putBoolean("notifyChanges", value) }
 
+    /** On unless the user turned it off: keeps this phone reachable so others see changes straight away. */
     var backgroundSync: Boolean
-        get() = prefs.getBoolean("backgroundSync", false)
+        get() = prefs.getBoolean("backgroundSync", true)
         set(value) = prefs.edit { putBoolean("backgroundSync", value) }
 }
