@@ -14,7 +14,12 @@ import app.twodo.model.edited
 import app.twodo.model.merge
 import app.twodo.model.mergeAudit
 import app.twodo.model.moved
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -38,6 +43,11 @@ data class RemoteResult(val changes: List<Pair<Item?, Item>>, val newAudit: List
 class ListRepository(private val dir: File, private val identity: Identity) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
+    /** Serialises file writes and deletes. */
+    private val fileMutex = Mutex()
+    private val writer = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val unsaved = mutableSetOf<String>()
+    private var pendingWrite: Job? = null
 
     private val _lists = MutableStateFlow(load())
     val lists: StateFlow<Map<String, TodoList>> = _lists.asStateFlow()
@@ -62,8 +72,8 @@ class ListRepository(private val dir: File, private val identity: Identity) {
 
     /** Removes the list from this device only; peers keep their copies. */
     suspend fun removeList(listId: String) = mutex.withLock {
-        withContext(Dispatchers.IO) { file(listId).delete() }
         _lists.value -= listId
+        fileMutex.withLock { withContext(Dispatchers.IO) { file(listId).delete() } }
     }
 
     /** Adds an item at the bottom of the list. */
@@ -143,7 +153,8 @@ class ListRepository(private val dir: File, private val identity: Identity) {
             val list = _lists.value[listId] ?: return RemoteResult(emptyList(), emptyList())
             val result = list.merge(items)
             val (merged, newAudit) = result.list.mergeAudit(audit)
-            if (merged != list) save(merged)
+            // Synced data can be re-fetched, so its writes are batched: a big sync arrives in many chunks.
+            if (merged != list) saveSoon(merged)
             result.conflicts.forEach { _conflicts.tryEmit(it) }
             RemoteResult(result.accepted.map { list.items[it.id] to it }, newAudit)
         }
@@ -183,8 +194,29 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         _localEdits.tryEmit(LocalEdit(listId, item, entry))
     }
 
+    /** Updates the list and writes it to disk now (local edits). */
     private suspend fun save(list: TodoList) {
         _lists.value += list.id to list
+        write(list.id)
+    }
+
+    /** Updates the list now and writes it once changes stop arriving for a moment. */
+    private fun saveSoon(list: TodoList) {
+        _lists.value += list.id to list
+        synchronized(unsaved) {
+            unsaved += list.id
+            if (pendingWrite?.isActive == true) return
+            pendingWrite = writer.launch {
+                delay(SAVE_DELAY_MS)
+                val ids = synchronized(unsaved) { unsaved.toList().also { unsaved.clear() } }
+                ids.forEach { write(it) }
+            }
+        }
+    }
+
+    /** Writes the list's current state, unless it has been removed meanwhile. */
+    private suspend fun write(listId: String) = fileMutex.withLock {
+        val list = _lists.value[listId] ?: return@withLock
         withContext(Dispatchers.IO) {
             val tmp = File(dir, "${list.id}.json.tmp")
             tmp.writeText(json.encodeToString(list))
@@ -196,6 +228,10 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     }
 
     private fun file(listId: String) = File(dir, "$listId.json")
+
+    private companion object {
+        const val SAVE_DELAY_MS = 300L
+    }
 
     private fun load(): Map<String, TodoList> {
         dir.mkdirs()
