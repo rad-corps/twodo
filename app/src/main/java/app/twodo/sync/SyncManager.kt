@@ -39,11 +39,17 @@ sealed class SyncMessage {
 
     /**
      * [full] is the whole list, sent when a connection opens; otherwise just changed items. [audit]
-     * carries change-log entries (an extra field, so older versions simply ignore it).
+     * carries change-log entries. Big updates are split into chunks (data channel messages are
+     * capped at ~256 KB); [last] marks the final chunk. Both are extra fields older versions ignore.
      */
     @Serializable
     @SerialName("items")
-    data class Items(val items: List<Item>, val full: Boolean = false, val audit: List<AuditEntry> = emptyList()) : SyncMessage()
+    data class Items(
+        val items: List<Item>,
+        val full: Boolean = false,
+        val audit: List<AuditEntry> = emptyList(),
+        val last: Boolean = true,
+    ) : SyncMessage()
 
     /** The sender removed the list from their device. */
     @Serializable
@@ -97,7 +103,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
         }
         scope.launch {
             repo.localEdits.collect { edit ->
-                broadcast(edit.listId, SyncMessage.Items(listOf(edit.item), audit = listOfNotNull(edit.audit)))
+                val swarm = swarms[edit.listId] ?: return@collect
+                swarm.openPeers.forEach { sendItems(swarm, it, listOf(edit.item), listOfNotNull(edit.audit)) }
             }
         }
         appContext.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(
@@ -141,7 +148,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     override suspend fun onPeerOpen(swarm: ListSwarm, peer: Peer) {
         val list = repo.lists.value[swarm.listId] ?: return
         send(swarm, peer, SyncMessage.Hello(identity.deviceId, identity.deviceName))
-        send(swarm, peer, SyncMessage.Items(list.items.values.toList(), full = true, audit = list.audit.values.toList()))
+        sendItems(swarm, peer, list.items.values.toList(), list.audit.values.toList(), full = true)
     }
 
     override suspend fun onPeerMessage(swarm: ListSwarm, peer: Peer, text: String) {
@@ -167,10 +174,12 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 val result = repo.applyRemote(swarm.listId, message.items, message.audit)
                 // Pass changes on so devices that aren't directly connected still converge.
                 if (result.changes.isNotEmpty() || result.newAudit.isNotEmpty()) {
-                    val forward = SyncMessage.Items(result.changes.map { it.second }, audit = result.newAudit)
-                    swarm.openPeers.filter { it !== peer }.forEach { send(swarm, it, forward) }
+                    val accepted = result.changes.map { it.second }
+                    swarm.openPeers.filter { it !== peer }.forEach { sendItems(swarm, it, accepted, result.newAudit) }
                 }
-                val quiet = message.full && firstSyncPeers.remove(peer)
+                // A device's first full sync (possibly several chunks) is just us joining, not news.
+                val quiet = message.full && peer in firstSyncPeers
+                if (message.full && message.last) firstSyncPeers -= peer
                 if (!quiet) announceChanges(swarm.listId, result.changes)
             }
             is SyncMessage.Leave -> {
@@ -219,6 +228,22 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
         swarm.openPeers.forEach { send(swarm, it, message) }
     }
 
+    /** Sends items and audit entries, split into chunks that fit in a data channel message. */
+    private fun sendItems(swarm: ListSwarm, peer: Peer, items: List<Item>, audit: List<AuditEntry>, full: Boolean = false) {
+        val itemChunks = items.chunked(ITEMS_PER_MESSAGE)
+        val auditChunks = audit.chunked(AUDIT_PER_MESSAGE)
+        val count = maxOf(itemChunks.size, auditChunks.size, 1)
+        for (i in 0 until count) {
+            val chunk = SyncMessage.Items(
+                items = itemChunks.getOrElse(i) { emptyList() },
+                full = full,
+                audit = auditChunks.getOrElse(i) { emptyList() },
+                last = i == count - 1,
+            )
+            send(swarm, peer, chunk)
+        }
+    }
+
     private fun send(swarm: ListSwarm, peer: Peer, message: SyncMessage) {
         val text = keys[swarm.listId]?.encrypt(json.encodeToString(SyncMessage.serializer(), message)) ?: return
         if (!peer.send(text)) Log.w(TAG, "Send to ${peer.deviceName} failed")
@@ -236,5 +261,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     private companion object {
         const val TAG = "TwoDo"
+        // ~300 bytes per item and ~150 per audit entry keeps each chunk well under the ~256 KB limit.
+        const val ITEMS_PER_MESSAGE = 100
+        const val AUDIT_PER_MESSAGE = 200
     }
 }
