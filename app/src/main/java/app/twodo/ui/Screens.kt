@@ -391,7 +391,7 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
                 TextButton(onClick = {
                     confirmRemove = false
                     onBack()
-                    scope.launch { app.sync.leave(list.id) }
+                    app.sync.leave(list.id)
                 }) { Text("Remove") }
             },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },

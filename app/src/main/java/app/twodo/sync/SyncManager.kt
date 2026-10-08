@@ -185,11 +185,16 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     private fun listName(listId: String) = repo.lists.value[listId]?.name ?: "a list"
 
-    /** Tells the others this device is leaving the list, then removes it from this device. */
-    suspend fun leave(listId: String) {
-        scope.launch { broadcast(listId, SyncMessage.Leave(identity.deviceId)) }.join()
-        delay(500) // let the message go out before the swarm closes
-        repo.removeList(listId)
+    /**
+     * Tells the others this device is leaving the list, then removes it from this device. Runs in the
+     * manager's own scope so it completes even if the screen that asked for it goes away.
+     */
+    fun leave(listId: String) {
+        scope.launch {
+            broadcast(listId, SyncMessage.Leave(identity.deviceId))
+            delay(500) // let the message go out before the swarm closes
+            repo.removeList(listId)
+        }
     }
 
     /** Tells connected devices about this user's new name. */
