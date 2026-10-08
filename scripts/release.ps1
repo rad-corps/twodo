@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-Builds a signed release APK and publishes it as a GitHub Release, where Obtainium picks it up.
+Builds a signed release APK and publishes it as a GitHub Release, where Obtainium picks it up. Also
+builds the signed app bundle (.aab) to upload to Google Play.
 The release notes are the "## Unreleased" section of CHANGELOG.md, which becomes "## v<Version> — <date>".
 
 .EXAMPLE
@@ -43,7 +44,7 @@ $props = $props -replace '^twodo\.versionName=.*', "twodo.versionName=$Version" 
                 -replace '^twodo\.versionCode=.*', "twodo.versionCode=$code"
 Set-Content gradle.properties $props
 
-./gradlew testDebugUnitTest assembleRelease
+./gradlew testDebugUnitTest assembleRelease bundleRelease
 if ($LASTEXITCODE) {
     git checkout -- gradle.properties CHANGELOG.md
     throw 'Build failed; version and changelog left unchanged.'
@@ -51,6 +52,8 @@ if ($LASTEXITCODE) {
 
 $apk = "app/build/outputs/apk/release/TwoDo-v$Version.apk"
 Copy-Item app/build/outputs/apk/release/app-release.apk $apk -Force
+$bundle = "app/build/outputs/bundle/release/TwoDo-v$Version.aab"
+Copy-Item app/build/outputs/bundle/release/app-release.aab $bundle -Force
 
 git commit -q -am "Release v$Version"
 git tag -a "v$Version" -m "TwoDo v$Version"
@@ -63,3 +66,4 @@ gh release create "v$Version" $apk --title "TwoDo v$Version" --notes-file $notes
 Remove-Item $notesFile
 if ($LASTEXITCODE) { throw 'Creating the GitHub release failed; retry with: gh release create ...' }
 Write-Host "Released v$Version (versionCode $code)."
+Write-Host "For Google Play, upload: $bundle"
