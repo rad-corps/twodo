@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.5.0 — 2026-10-09
+
 **Themes.** Pick a colour theme for the app (Settings › Theme) and give any list or diary its own
 (⋮ › Theme) to tell them apart at a glance. Fifteen to start: TwoDo Dark and Light, Solarized Dark and
 Light, Nord and Nord Light, Dracula, Gruvbox Dark and Light, Catppuccin Mocha and Latte, Tokyo Night,
