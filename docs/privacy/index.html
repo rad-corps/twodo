@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy</title>
+<style>
+  :root { --bg: #fafaf8; --fg: #1b1d1c; --muted: #575e5b; --accent: #2e6b5e; --line: #e1e4e2; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121413; --fg: #e2e4e2; --muted: #a9afac; --accent: #8fc9b4; --line: #2b302e; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; font-weight: 600; margin: 32px 0 8px; }
+  p, li { color: var(--fg); }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  .summary { border: 1px solid var(--line); border-radius: 12px; padding: 4px 20px; margin: 24px 0; }
+  ul { padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy policy</h1>
+  <p class="muted">Last updated 9 October 2026</p>
+
+  <div class="summary">
+    <p><strong>In short:</strong> there's no account and nothing to sign up for. Your lists and diaries
+    live on your phone and the phones of the people you share them with. We (the developer) never
+    receive them, and the app has no ads, analytics or tracking.</p>
+  </div>
+
+  <h2>What stays on your phone</h2>
+  <p>Your lists, diary entries, their change history, the name you choose for yourself, and your settings
+  are stored only on your phone. They are not backed up to any cloud service by the app.</p>
+
+  <h2>What happens when you share a list or diary</h2>
+  <p>Sharing gives the other person a QR code or link containing the list's secret key. Anyone with that
+  code or link can see and change the list, so only share it with people you trust. Their phones and
+  yours then keep the list in step:</p>
+  <ul>
+    <li><strong>Directly between phones</strong> where possible. To find each other, the phones briefly
+      use free public "meeting point" servers (WebTorrent trackers) and address-lookup (STUN) servers.
+      These see your phone's internet address and a random code for the list — never the list itself.</li>
+    <li><strong>Through public relay servers</strong> (the Nostr network) when the phones can't connect
+      directly, or when one of them is switched off. Everything sent this way is <strong>encrypted on
+      your phone</strong> with the list's secret key, so the relays only see scrambled data, along with
+      your internet address, the time and size of each message, and a random code for the list. Relayed
+      messages are set to expire after 14 days.</li>
+  </ul>
+  <p>The people you share with see the list's contents, the name you entered, and who changed what and when.</p>
+  <p>These servers are run by independent third parties, not by us; we don't control or receive their logs.</p>
+
+  <h2>The share link page</h2>
+  <p>Share links open a web page hosted on GitHub Pages that hands the link to the app. The list's details
+  are in the part of the link after the "#", which web browsers never send to the server.</p>
+
+  <h2>Permissions</h2>
+  <ul>
+    <li><strong>Camera</strong> — only to scan a list's QR code. Pictures aren't saved or sent anywhere.</li>
+    <li><strong>Photos</strong> — only the screenshot you choose, to read a QR code from it on your phone.</li>
+    <li><strong>Notifications</strong> — to tell you when someone joins, leaves or changes a shared list.
+      These are created on your phone.</li>
+    <li><strong>Background sync</strong> — keeps the app connected so changes reach you while it's closed.
+      You can turn it off in Settings.</li>
+  </ul>
+
+  <h2>What we collect</h2>
+  <p>Nothing. The app has no account, no analytics, no advertising and no crash reporting, and it doesn't
+  send any information to the developer.</p>
+
+  <h2>Deleting your data</h2>
+  <p>Remove a list from your phone with ⋮ › Remove from this phone, or uninstall the app to remove
+  everything. Copies on other members' phones are theirs to remove. Relayed messages expire on their own.</p>
+
+  <h2>Children</h2>
+  <p>The app isn't aimed at children under 13 and doesn't knowingly collect anything from anyone.</p>
+
+  <h2>Changes and contact</h2>
+  <p>If this policy changes, the new version will be posted here with a new date. Questions:
+  <a href="https://github.com/rad-corps/twodo/issues">open an issue on GitHub</a>.</p>
+</main>
+</body>
+</html>
