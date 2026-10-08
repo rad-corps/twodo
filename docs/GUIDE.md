@@ -49,7 +49,7 @@ adb -s emulator-5556 shell pm clear app.twodo
 
 1. Open **TwoDo** on both. Each asks for a name — use different ones (e.g. "Adam" and "Sam").
 2. **Phone A:** **New list** → name it → add a few items.
-3. **Phone A:** tap **Share** (top right) → **Send link** → **Copy**.
+3. **Phone A:** tap **Share** (top right) → **Send link** → **Copy text** (copy icon at the top of the share sheet).
    The emulators share the PC's clipboard, so the link is now on the PC and on phone B.
 4. **Phone B:** **Join list** → long-press the "…or paste a link" box → **Paste** → **Join**.
 5. Within ~30 s both show **● Connected to …** in the list header. Tick, untick, add, delete and drag on
