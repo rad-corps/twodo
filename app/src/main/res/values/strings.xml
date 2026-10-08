@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TwoDo</string>
+    <string name="channel_conflicts">Sync conflicts</string>
+    <string name="channel_sync">Background sync</string>
+    <string name="conflict_title">Conflicting edits in %1$s</string>
+    <string name="sync_service_title">Keeping lists in sync</string>
+    <string name="sync_service_text">Connected so other devices can reach this one</string>
+</resources>
