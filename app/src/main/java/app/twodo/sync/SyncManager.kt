@@ -3,6 +3,7 @@ package app.twodo.sync
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import android.os.SystemClock
 import android.util.Log
 import app.twodo.data.Identity
 import app.twodo.data.ListRepository
@@ -171,7 +172,12 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 publishStatus()
             }
             is SyncMessage.Items -> {
+                val applyStarted = SystemClock.elapsedRealtime()
                 val result = repo.applyRemote(swarm.listId, message.items, message.audit)
+                swarm.trace(
+                    "applied ${message.items.size} items + ${message.audit.size} audit (full=${message.full}, last=${message.last}) " +
+                        "in ${SystemClock.elapsedRealtime() - applyStarted}ms",
+                )
                 // Pass changes on so devices that aren't directly connected still converge.
                 if (result.changes.isNotEmpty() || result.newAudit.isNotEmpty()) {
                     val accepted = result.changes.map { it.second }

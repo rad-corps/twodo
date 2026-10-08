@@ -1,8 +1,14 @@
 package app.twodo.net
 
+import android.util.Log
+import android.os.SystemClock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import org.webrtc.DataChannel
@@ -25,8 +31,9 @@ interface PeerEvents {
 
 /**
  * One WebRTC connection carrying a single ordered data channel. Signalling is non-trickle: offers and
- * answers are sent once ICE gathering finishes, so a tracker only needs to relay one message each way.
- * Events are delivered in [scope].
+ * answers carry their ICE candidates, so a tracker only needs to relay one message each way. They're
+ * sent once a public (server-reflexive) address is known rather than when gathering fully finishes,
+ * which on phones can take many seconds. Events are delivered in [scope].
  */
 class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, private val events: PeerEvents) {
     /** The remote side's tracker peer id, once known. */
@@ -35,6 +42,7 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
     val createdAt = System.currentTimeMillis()
 
     private val gathered = CompletableDeferred<Unit>()
+    private val gotPublicAddress = CompletableDeferred<Unit>()
     private var channel: DataChannel? = null
     private var closed = false
     private var openNotified = false
@@ -71,9 +79,26 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         pc.dispose()
     }
 
+    /**
+     * The local description once it's worth sending: when gathering completes, shortly after the first
+     * public address arrives, or at [GATHER_CAP_MS] with whatever was found (e.g. if STUN is blocked).
+     */
     private suspend fun gatheredSdp(): String {
-        withTimeoutOrNull(GATHER_TIMEOUT_MS) { gathered.await() }
-        return pc.localDescription?.description ?: error("No local description")
+        val started = SystemClock.elapsedRealtime()
+        coroutineScope {
+            val afterPublic = async { gotPublicAddress.await(); delay(PUBLIC_ADDRESS_GRACE_MS) }
+            withTimeoutOrNull(GATHER_CAP_MS) {
+                select {
+                    gathered.onAwait { }
+                    afterPublic.onAwait { }
+                }
+            }
+            afterPublic.cancel()
+        }
+        val sdp = pc.localDescription?.description ?: error("No local description")
+        val types = Regex("""typ (\w+)""").findAll(sdp).map { it.groupValues[1] }.groupingBy { it }.eachCount()
+        Log.d("TwoDoSync", "peer ${hashCode().toString(16)} sdp ready in ${SystemClock.elapsedRealtime() - started}ms, candidates $types")
+        return sdp
     }
 
     private fun attach(dc: DataChannel) {
@@ -113,6 +138,7 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         }
 
         override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
+            Log.d("TwoDoSync", "peer ${this@Peer.hashCode().toString(16)} connection $state")
             if (state == PeerConnection.PeerConnectionState.FAILED || state == PeerConnection.PeerConnectionState.CLOSED) {
                 scope.launch { events.onClosed(this@Peer) }
             }
@@ -123,9 +149,13 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         }
 
         override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
-        override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) = Unit
+        override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+            Log.d("TwoDoSync", "peer ${this@Peer.hashCode().toString(16)} ice $state")
+        }
         override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
-        override fun onIceCandidate(candidate: IceCandidate) = Unit
+        override fun onIceCandidate(candidate: IceCandidate) {
+            if (" typ srflx" in candidate.sdp) gotPublicAddress.complete(Unit)
+        }
         override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
         override fun onAddStream(stream: MediaStream) = Unit
         override fun onRemoveStream(stream: MediaStream) = Unit
@@ -133,7 +163,9 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
     }
 
     private companion object {
-        const val GATHER_TIMEOUT_MS = 5_000L
+        const val GATHER_CAP_MS = 1_500L
+        /** Other interfaces' public addresses usually follow within a moment of the first. */
+        const val PUBLIC_ADDRESS_GRACE_MS = 150L
 
         fun rtcConfig() = PeerConnection.RTCConfiguration(
             listOf(
