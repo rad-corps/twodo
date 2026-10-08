@@ -63,6 +63,9 @@ class ListSwarm(
     private val peers = mutableMapOf<String, Peer>()
     private var announceJob: Job? = null
     private var stopped = false
+    /** How long to wait before looking again while nobody is connected; grows while nobody answers. */
+    private var searchInterval = SEARCH_INTERVAL_MS
+    private var lastRetry = 0L
     private val startedAt = SystemClock.elapsedRealtime()
 
     /** Timing log for diagnosing how long finding and syncing with peers takes (`adb logcat -s TwoDoSync`). */
@@ -80,6 +83,7 @@ class ListSwarm(
             if (field == value) return
             field = value
             trace(if (value) "sharing: announcing often" else "sharing ended")
+            searchInterval = SEARCH_INTERVAL_MS
             startAnnouncing(now = value)
         }
 
@@ -95,14 +99,9 @@ class ListSwarm(
         announceJob = scope.launch {
             if (now) announce()
             while (isActive) {
-                // Look harder while nobody's connected; just stay discoverable once someone is.
-                delay(
-                    when {
-                        eager -> EAGER_INTERVAL_MS
-                        openPeers.isEmpty() -> SEARCH_INTERVAL_MS
-                        else -> ANNOUNCE_INTERVAL_MS
-                    },
-                )
+                // Look often at first, then back off while nobody answers (the other phone may simply be
+                // off); just stay discoverable once someone is connected.
+                delay(nextAnnounceDelay())
                 announce()
             }
         }
@@ -130,9 +129,29 @@ class ListSwarm(
         peers.clear()
     }
 
-    /** The network changed: look for peers again (the pool reconnects the trackers). */
+    private fun nextAnnounceDelay(): Long = when {
+        eager -> EAGER_INTERVAL_MS
+        openPeers.isNotEmpty() -> ANNOUNCE_INTERVAL_MS.also { searchInterval = SEARCH_INTERVAL_MS }
+        else -> searchInterval.also { searchInterval = minOf(it * 2, MAX_SEARCH_INTERVAL_MS) }
+    }
+
+    private fun nextDelayIsShort() = eager || (openPeers.isEmpty() && searchInterval <= OFFER_TTL_MS / 2)
+
+    /** The network changed or the app came back: look for peers again now, and often. */
     fun kick() {
-        scope.launch { announce() }
+        searchInterval = SEARCH_INTERVAL_MS
+        // Just started: it's already announcing.
+        if (announceJob == null || SystemClock.elapsedRealtime() - startedAt < 3_000) return
+        startAnnouncing(now = true)
+    }
+
+    /** Re-announce after a failed attempt, but at most every [RETRY_INTERVAL_MS]. */
+    private suspend fun retrySoon() {
+        if (openPeers.isNotEmpty() || stopped) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastRetry < RETRY_INTERVAL_MS) return
+        lastRetry = now
+        announce()
     }
 
     fun drop(peer: Peer) {
@@ -181,7 +200,8 @@ class ListSwarm(
         expireOffers()
         val offersStarted = SystemClock.elapsedRealtime()
         val offers = takeOffers()
-        prepareOffers() // for the next announcement
+        // Have the next ones ready only if they'll be used before going stale.
+        if (nextDelayIsShort()) prepareOffers()
         val online = to.filter { it.isOpen }
         if (stopped || online.isEmpty()) return offers.forEach { it.peer.close() }
         offers.forEach { pending[it.id] = it }
@@ -272,7 +292,7 @@ class ListSwarm(
             if (stopped || peer.isOpen || peers[id] !== peer) return@launch
             trace("connection to ${id.take(4)} didn't open in ${CONNECT_TIMEOUT_MS}ms; retrying")
             drop(peer)
-            if (openPeers.isEmpty()) announce()
+            retrySoon()
         }
     }
 
@@ -290,8 +310,8 @@ class ListSwarm(
         if (peers[id] !== peer) return
         val wasOpen = peer.isOpen
         drop(peer)
-        // A connection attempt that failed: try again now rather than at the next round.
-        if (!wasOpen && openPeers.isEmpty()) announce()
+        // A connection attempt that failed: try again soon rather than at the next round.
+        if (!wasOpen) retrySoon()
     }
 
     companion object {
@@ -299,6 +319,8 @@ class ListSwarm(
         private const val ANNOUNCE_INTERVAL_MS = 30_000L
         private const val SEARCH_INTERVAL_MS = 10_000L
         private const val EAGER_INTERVAL_MS = 3_000L
+        private const val MAX_SEARCH_INTERVAL_MS = 120_000L
+        private const val RETRY_INTERVAL_MS = 10_000L
         private const val CONNECT_TIMEOUT_MS = 5_000L
         private const val OFFER_TTL_MS = 60_000L
         private const val OFFERS_PER_ANNOUNCE = 3

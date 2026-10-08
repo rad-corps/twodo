@@ -76,8 +76,13 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
     fun close() {
         if (closed) return
         closed = true
-        channel?.run { unregisterObserver(); close(); dispose() }
-        pc.dispose()
+        val dc = channel
+        dc?.unregisterObserver()
+        // Disposing blocks for a while (it waits on WebRTC's threads), so keep it off the sync thread.
+        disposer.execute {
+            dc?.run { close(); dispose() }
+            pc.dispose()
+        }
     }
 
     /**
@@ -173,6 +178,8 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
     }
 
     private companion object {
+        val disposer: java.util.concurrent.Executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
         const val GATHER_CAP_MS = 1_500L
         const val SLOW_GATHER_MS = 400L
         /** Other interfaces' public addresses usually follow within a moment of the first. */

@@ -158,6 +158,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
         scope.launch {
             users++
             reconcile()
+            // Opening the app is a good moment to look for the others again, quickly.
+            swarms.values.forEach { it.kick() }
         }
     }
 
