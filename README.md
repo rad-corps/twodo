@@ -1,7 +1,8 @@
 # TwoDo
 
 Shared to-do lists for Android that sync directly between phones — no account, no server of our own,
-no subscription. See [docs/PLAN.md](docs/PLAN.md) for the design.
+no subscription. See [docs/PLAN.md](docs/PLAN.md) for the design and
+[docs/GUIDE.md](docs/GUIDE.md) for running emulators and installing on phones.
 
 ## Build
 
