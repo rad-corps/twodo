@@ -236,7 +236,7 @@ private fun AddEntryBar(pager: PagerState, onAdd: (LocalDate, String, String?) -
             ),
             trailingIcon = {
                 TextButton(onClick = { pickingTime = true }) {
-                    Text(time?.let { displayTime(context, it) } ?: "Time")
+                    Text(time?.let { displayTime(DateFormat.is24HourFormat(context), it) } ?: "Time")
                 }
             },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -275,6 +275,7 @@ private fun DayPage(
         return
     }
     val context = LocalContext.current
+    val is24Hour = remember { DateFormat.is24HourFormat(context) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         items(entries, key = { it.id }) { entry ->
             val background by animateColorAsState(
@@ -288,7 +289,7 @@ private fun DayPage(
                 verticalAlignment = Alignment.Top,
             ) {
                 Text(
-                    entry.time?.let { displayTime(context, it) } ?: "",
+                    entry.time?.let { displayTime(is24Hour, it) } ?: "",
                     Modifier.width(64.dp).padding(top = 2.dp),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
@@ -337,7 +338,7 @@ private fun EntryDialog(
                     AssistChip(onClick = { pickingDate = true }, label = { Text(formatDay(date)) })
                     AssistChip(
                         onClick = { pickingTime = true },
-                        label = { Text(time?.let { displayTime(context, it) } ?: "Add time") },
+                        label = { Text(time?.let { displayTime(DateFormat.is24HourFormat(context), it) } ?: "Add time") },
                         trailingIcon = time?.let {
                             {
                                 Icon(
@@ -416,6 +417,6 @@ private fun TimeDialog(initial: String?, onDismiss: () -> Unit, onClear: (() -> 
 private val twelveHour = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
 
 /** "15:00" stored; shown as "15:00" or "3:00 PM" depending on the phone's setting. */
-private fun displayTime(context: android.content.Context, time: String): String =
-    if (DateFormat.is24HourFormat(context)) time
+private fun displayTime(is24Hour: Boolean, time: String): String =
+    if (is24Hour) time
     else runCatching { LocalTime.parse(time).format(twelveHour) }.getOrDefault(time)

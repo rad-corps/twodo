@@ -1,7 +1,7 @@
 # TwoDo
 
-Shared to-do lists for Android that sync directly between phones — no account, no server of our own,
-no subscription. See [docs/PLAN.md](docs/PLAN.md) for the design and
+Shared to-do lists and diaries for Android that sync directly between phones — no account, no server
+of our own, no subscription. See [docs/PLAN.md](docs/PLAN.md) for the design and
 [docs/GUIDE.md](docs/GUIDE.md) for running emulators and installing on phones.
 
 ## Install
@@ -56,6 +56,11 @@ pushes, and creates a GitHub Release with the APK attached — which is what Obt
 3. Both phones show "Connected to …" once they've found each other; edits then sync live.
 
 Turn on **Settings → Sync in background** to stay reachable while the app is closed.
+
+**Diaries** work the same way (**New → Diary**): swipe between days, tap the date to pick or type one,
+and add entries with an optional time. Tap an entry to edit, move or delete it.
+
+Every list and diary keeps a shared **History** (⋮ menu) of who changed what, and when.
 
 ## Code map
 

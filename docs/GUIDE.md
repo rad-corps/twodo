@@ -64,6 +64,14 @@ adb -s emulator-5556 shell am start -a android.intent.action.VIEW -d "'$(Get-Cli
 
 (Scanning the QR code isn't practical on emulators — their camera is a virtual room.)
 
+### Try a diary
+
+1. **Phone A:** **New** → **Diary** → name it. It opens on today.
+2. Add entries; tap **Time** first to give one a time. Swipe left/right to change day, or use ‹ ›.
+3. Tap the date to open the calendar; the pencil icon switches to typing a date. **Today** jumps back.
+4. Share it like a list. On B, entries appear on the same days. Tap one to edit, move or delete it — the
+   dialog shows that entry's history; ⋮ → **History** shows everything.
+
 ### Try a conflict
 
 1. Take B offline: `adb -s emulator-5556 shell "svc wifi disable; svc data disable"` (header shows **Offline**).
