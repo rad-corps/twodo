@@ -34,6 +34,11 @@ android {
     }
 
     buildTypes {
+        // Installs next to the released app ("TwoDo (dev)", own data), so any machine's debug key works.
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-dev"
+        }
         release {
             isMinifyEnabled = false
             signingConfig = releaseSigning
