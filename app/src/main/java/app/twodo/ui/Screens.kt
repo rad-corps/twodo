@@ -6,6 +6,17 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +37,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -39,7 +49,6 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -122,7 +131,8 @@ private fun ListsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("TwoDo") },
+                title = { Text("TwoDo", style = MaterialTheme.typography.titleLarge) },
+                colors = flatBar(),
                 actions = {
                     TextButton(onClick = { joining = true }) { Text("Join list") }
                     IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, "Settings") }
@@ -132,6 +142,9 @@ private fun ListsScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { creating = true },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
                 icon = { Icon(Icons.Default.Add, null) },
                 text = { Text("New list") },
             )
@@ -146,20 +159,31 @@ private fun ListsScreen(
             ) {
                 Text("No lists yet", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                Text("Create a list, or join one by scanning the QR code on another phone.")
+                Text(
+                    "Create a list, or join one by scanning the QR code on another phone.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
         LazyColumn(contentPadding = padding) {
             items(lists, key = { it.id }) { list ->
                 val items = list.visibleItems
-                ListItem(
-                    headlineContent = { Text(list.name) },
-                    supportingContent = {
-                        Text("${items.count { !it.checked }} to do · ${status[list.id].summary()}")
-                    },
-                    modifier = Modifier.clickable { onOpen(list.id) },
-                )
-                HorizontalDivider()
+                Row(
+                    Modifier.fillMaxWidth().clickable { onOpen(list.id) }.padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(list.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "${items.count { !it.checked }} to do · ${status[list.id].summary()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    SyncDot(status[list.id])
+                }
+                HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
@@ -198,10 +222,15 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
             TopAppBar(
                 title = {
                     Column {
-                        Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(status.summary(), style = MaterialTheme.typography.bodySmall)
+                        Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SyncDot(status)
+                            Spacer(Modifier.width(6.dp))
+                            Text(status.summary(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 },
+                colors = flatBar(),
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 },
@@ -220,12 +249,18 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = newText,
                     onValueChange = { newText = it },
                     placeholder = { Text("Add an item") },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
                     keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { add() }),
                     modifier = Modifier.weight(1f),
@@ -245,21 +280,26 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
                             Modifier.fillMaxWidth()
                                 .background(MaterialTheme.colorScheme.surface)
                                 .clickable { scope.launch { app.repo.setChecked(list.id, item.id, !item.checked) } }
-                                .padding(horizontal = 8.dp),
+                                .padding(start = 8.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Checkbox(
                                 checked = item.checked,
                                 onCheckedChange = { scope.launch { app.repo.setChecked(list.id, item.id, it) } },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedColor = MaterialTheme.colorScheme.outline,
+                                ),
                             )
                             Text(
                                 item.text,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                                style = MaterialTheme.typography.bodyLarge,
                                 textDecoration = if (item.checked) TextDecoration.LineThrough else null,
                                 color = if (item.checked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                             )
                             IconButton(onClick = { scope.launch { app.repo.deleteItem(list.id, item.id) } }) {
-                                Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.outline)
+                                Icon(Icons.Default.Close, "Delete", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
                             }
                             Icon(
                                 painterResource(R.drawable.ic_drag_handle),
@@ -369,6 +409,7 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
 private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(app.identity.deviceName) }
     var background by remember { mutableStateOf(app.identity.backgroundSync) }
+    var dark by remember { mutableStateOf(app.identity.darkMode) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
@@ -384,11 +425,17 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Dark mode", Modifier.weight(1f))
+                    Switch(checked = dark, onCheckedChange = { dark = it })
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Sync in background")
                         Text(
                             "Stay reachable while the app is closed. Shows a permanent notification and uses some battery.",
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Switch(checked = background, onCheckedChange = { background = it })
@@ -398,6 +445,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 app.identity.deviceName = name
+                app.setDarkMode(dark)
                 if (background != app.identity.backgroundSync) app.setBackgroundSync(background)
                 onDismiss()
             }) { Text("Save") }
@@ -417,6 +465,22 @@ private fun TextPromptDialog(title: String, label: String, confirm: String, onDi
         },
         confirmButton = { TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun flatBar() = TopAppBarDefaults.topAppBarColors(
+    containerColor = MaterialTheme.colorScheme.background,
+    scrolledContainerColor = MaterialTheme.colorScheme.background,
+)
+
+/** Small status dot: accent when connected to another device, grey otherwise. */
+@Composable
+private fun SyncDot(status: SyncStatus?) {
+    val connected = !status?.peerNames.isNullOrEmpty()
+    Box(
+        Modifier.size(8.dp).clip(CircleShape)
+            .background(if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
     )
 }
 

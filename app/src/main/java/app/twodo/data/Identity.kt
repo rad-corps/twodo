@@ -16,6 +16,10 @@ class Identity(context: Context) {
         get() = prefs.getString("deviceName", null) ?: Build.MODEL
         set(value) = prefs.edit { putString("deviceName", value.trim().ifEmpty { Build.MODEL }) }
 
+    var darkMode: Boolean
+        get() = prefs.getBoolean("darkMode", true)
+        set(value) = prefs.edit { putBoolean("darkMode", value) }
+
     var backgroundSync: Boolean
         get() = prefs.getBoolean("backgroundSync", false)
         set(value) = prefs.edit { putBoolean("backgroundSync", value) }
