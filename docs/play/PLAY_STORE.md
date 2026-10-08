@@ -19,8 +19,13 @@ placeholder; see [Name ideas](#name-ideas).
 **Forms (answers drafted below):** app access, ads, content rating, target audience, data safety,
 privacy policy URL, foreground service declaration, store listing.
 
-**Assets:** icon 512×512 (`docs/play/icon-512.png`), phone screenshots (`docs/play/screenshots/`),
-feature graphic 1024×500 (needed for production; make it once the name is chosen).
+**Assets:** icon 512×512 (`docs/play/icon-512.png`, a placeholder from the launcher icon), phone
+screenshots (`docs/play/screenshots/`, 1080×2400), feature graphic 1024×500 (needed for production;
+make it once the name is chosen).
+
+The screenshots use demo family data and show the current name, so retake them after renaming: start two
+emulators with the debug build installed and run `bash scripts/screenshots.sh` (it replaces the debug
+app's data on both; `ADB=` can point at adb if it isn't on the PATH).
 
 For production later: new personal developer accounts must first run a **closed test with at least 12
 testers for 14 days** (check the current rule in Play Console); internal testing doesn't need that.
