@@ -73,6 +73,8 @@ data class TodoList(
     /** Local only: this device created the list (rather than joining it). */
     val createdHere: Boolean = false,
     val kind: SpaceKind = SpaceKind.LIST,
+    /** Local only: this phone's colour theme for the list (null: follow the app's theme). */
+    val themeId: String? = null,
     /** Local only: this device has had a complete copy of the list from someone (or created it). */
     val fullSynced: Boolean = false,
     /** Local only: newest relay event seen (unix seconds), to fetch only what's new next time. */

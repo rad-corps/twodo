@@ -15,6 +15,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -26,6 +28,7 @@ import app.twodo.ui.QrImage
 import app.twodo.ui.TwoDoRoot
 import kotlinx.coroutines.launch
 import app.twodo.ui.TwoDoTheme
+import app.twodo.ui.themeById
 
 class MainActivity : ComponentActivity() {
     private val app get() = application as TwoDoApp
@@ -41,18 +44,21 @@ class MainActivity : ComponentActivity() {
         }
         if (app.identity.backgroundSync) SyncService.setEnabled(this, true)
         setContent {
-            val dark by app.darkMode.collectAsStateWithLifecycle()
-            LaunchedEffect(dark) {
-                val bars = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+            val themeId by app.appTheme.collectAsStateWithLifecycle()
+            // The open list may have its own theme; the status bar icons follow whatever is on screen.
+            var screenDark by remember { mutableStateOf(themeById(themeId).dark) }
+            LaunchedEffect(screenDark) {
+                val bars = if (screenDark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
                 enableEdgeToEdge(bars, bars)
             }
-            TwoDoTheme(dark) {
+            TwoDoTheme(themeById(themeId)) {
                 TwoDoRoot(
                     app,
                     pendingInvite.value,
                     onInviteHandled = { pendingInvite.value = null },
                     openRequest = pendingOpen.value,
                     onOpenHandled = { pendingOpen.value = null },
+                    onScreenDark = { screenDark = it },
                 )
             }
         }

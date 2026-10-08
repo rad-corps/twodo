@@ -5,6 +5,15 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Themes.** Pick a colour theme for the app (Settings › Theme) and give any list or diary its own
+(⋮ › Theme) to tell them apart at a glance. Fifteen to start: TwoDo Dark and Light, Solarized Dark and
+Light, Nord and Nord Light, Dracula, Gruvbox Dark and Light, Catppuccin Mocha and Latte, Tokyo Night,
+Rosé Pine and Rosé Pine Dawn, and One Dark. Themes are just for your phone — they aren't shared.
+
+**Icons.** Lists and diaries now have their own icons (a checklist and a calendar), on the home screen —
+in each one's theme colours — next to the name when it's open, and when creating something new.
+The old dark mode switch is replaced by the theme setting (dark mode off becomes TwoDo Light).
+
 ## v0.4.0 — 2026-10-08
 
 **Lists now sync even when the phones can't connect directly — and when one of them is off.**

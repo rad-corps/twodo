@@ -23,7 +23,7 @@ class TwoDoApp : Application() {
     lateinit var sync: SyncManager
         private set
 
-    lateinit var darkMode: MutableStateFlow<Boolean>
+    lateinit var appTheme: MutableStateFlow<String>
         private set
 
     /** Number of started activities; conflicts are shown in-app while visible, as notifications otherwise. */
@@ -36,7 +36,7 @@ class TwoDoApp : Application() {
         identity = Identity(this)
         repo = ListRepository(File(filesDir, "lists"), identity)
         sync = SyncManager(this, repo, identity)
-        darkMode = MutableStateFlow(identity.darkMode)
+        appTheme = MutableStateFlow(identity.themeId)
         Notifications.createChannels(this)
         SyncWorker.schedule(this)
         scope.launch {
@@ -63,9 +63,9 @@ class TwoDoApp : Application() {
         sync.nameChanged()
     }
 
-    fun setDarkMode(enabled: Boolean) {
-        identity.darkMode = enabled
-        darkMode.value = enabled
+    fun setTheme(themeId: String) {
+        identity.themeId = themeId
+        appTheme.value = themeId
     }
 
     fun setBackgroundSync(enabled: Boolean) {

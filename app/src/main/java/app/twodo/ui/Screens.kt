@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.TopAppBarDefaults
@@ -124,7 +125,10 @@ fun TwoDoRoot(
     onInviteHandled: () -> Unit,
     openRequest: String? = null,
     onOpenHandled: () -> Unit = {},
+    onScreenDark: (Boolean) -> Unit = {},
 ) {
+    val appThemeId by app.appTheme.collectAsStateWithLifecycle()
+    val appTheme = themeById(appThemeId)
     val lists by app.repo.lists.collectAsStateWithLifecycle()
     val status by app.sync.status.collectAsStateWithLifecycle()
     var openListId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -170,15 +174,19 @@ fun TwoDoRoot(
     }
 
     val open = openListId?.let { lists[it] }
+    val screenTheme = open?.theme(appTheme) ?: appTheme
+    LaunchedEffect(screenTheme.dark) { onScreenDark(screenTheme.dark) }
     if (open == null) {
-        ListsScreen(app, lists.values.sortedBy { it.name.lowercase() }, status, snackbar, onOpen = { openListId = it })
+        ListsScreen(app, lists.values.sortedBy { it.name.lowercase() }, status, snackbar, appTheme, onOpen = { openListId = it })
     } else {
         BackHandler { openListId = null }
         val openStatus = status[open.id] ?: SyncStatus()
-        if (open.kind == SpaceKind.DIARY) {
-            DiaryScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
-        } else {
-            ListScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
+        TwoDoTheme(screenTheme) {
+            if (open.kind == SpaceKind.DIARY) {
+                DiaryScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
+            } else {
+                ListScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
+            }
         }
     }
 }
@@ -189,6 +197,7 @@ private fun ListsScreen(
     lists: List<TodoList>,
     status: Map<String, SyncStatus>,
     snackbar: SnackbarHostState,
+    appTheme: AppTheme,
     onOpen: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -237,9 +246,11 @@ private fun ListsScreen(
         LazyColumn(contentPadding = padding) {
             items(lists, key = { it.id }) { list ->
                 Row(
-                    Modifier.fillMaxWidth().clickable { onOpen(list.id) }.padding(horizontal = 20.dp, vertical = 16.dp),
+                    Modifier.fillMaxWidth().clickable { onOpen(list.id) }.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    SpaceBadge(list, appTheme)
+                    Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(list.name, style = MaterialTheme.typography.bodyLarge)
                         Text(
@@ -250,7 +261,7 @@ private fun ListsScreen(
                     }
                     SyncDot(status[list.id])
                 }
-                HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(Modifier.padding(start = 70.dp, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
@@ -380,10 +391,16 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
     var sharing by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var pickingTheme by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     TopAppBar(
         title = {
             Column {
-                Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(list.kind.icon, list.kind.label, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SyncDot(status)
                     Spacer(Modifier.width(6.dp))
@@ -400,11 +417,22 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
             IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onHistory() })
+                DropdownMenuItem(text = { Text("Theme") }, onClick = { menu = false; pickingTheme = true })
                 DropdownMenuItem(text = { Text("Remove from this phone") }, onClick = { menu = false; confirmRemove = true })
             }
         },
     )
     if (sharing) ShareDialog(app, list, onDismiss = { sharing = false })
+    if (pickingTheme) {
+        val appThemeId by app.appTheme.collectAsStateWithLifecycle()
+        ThemePickerDialog(
+            title = "Theme for “${list.name}”",
+            selected = list.themeId,
+            appTheme = themeById(appThemeId),
+            icon = list.kind.icon,
+            onDismiss = { pickingTheme = false },
+        ) { id -> scope.launch { app.repo.setTheme(list.id, id) } }
+    }
     if (confirmRemove) {
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
@@ -558,7 +586,15 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
 private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(if (app.identity.hasName) app.identity.deviceName else "") }
     var background by remember { mutableStateOf(app.identity.backgroundSync) }
-    var dark by remember { mutableStateOf(app.identity.darkMode) }
+    var themeId by remember { mutableStateOf(app.identity.themeId) }
+    var pickingTheme by remember { mutableStateOf(false) }
+    if (pickingTheme) {
+        return ThemePickerDialog(
+            title = "App theme",
+            selected = themeId,
+            onDismiss = { pickingTheme = false },
+        ) { id -> if (id != null) themeId = id }
+    }
     var notifyChanges by remember { mutableStateOf(app.identity.notifyChanges) }
     var showLog by remember { mutableStateOf(false) }
     var direct by remember { mutableStateOf(app.identity.directConnections) }
@@ -577,9 +613,24 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Dark mode", Modifier.weight(1f))
-                    Switch(checked = dark, onCheckedChange = { dark = it })
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { pickingTheme = true }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Theme")
+                        Text(
+                            "${themeById(themeId).name} · lists and diaries can have their own (⋮ › Theme)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    val colors = themeById(themeId).colors
+                    Box(
+                        Modifier.size(28.dp).clip(CircleShape).background(colors.background)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) { Box(Modifier.size(12.dp).clip(CircleShape).background(colors.primary)) }
                 }
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -619,7 +670,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 if (name.isNotBlank()) app.setName(name)
-                app.setDarkMode(dark)
+                app.setTheme(themeId)
                 app.identity.notifyChanges = notifyChanges
                 if (direct != app.identity.directConnections) {
                     app.identity.directConnections = direct
@@ -721,7 +772,8 @@ private fun NewSpaceDialog(onDismiss: () -> Unit, onCreate: (String, SpaceKind) 
                             selected = kind == option,
                             onClick = { kind = option },
                             shape = SegmentedButtonDefaults.itemShape(index, SpaceKind.entries.size),
-                        ) { Text(if (option == SpaceKind.DIARY) "Diary" else "List") }
+                            icon = { Icon(option.icon, null, Modifier.size(18.dp)) },
+                        ) { Text(option.label) }
                     }
                 }
                 Spacer(Modifier.height(16.dp))

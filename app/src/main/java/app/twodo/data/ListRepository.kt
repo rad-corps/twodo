@@ -159,6 +159,12 @@ class ListRepository(private val dir: File, private val identity: Identity) {
             RemoteResult(result.accepted.map { list.items[it.id] to it }, newAudit)
         }
 
+    /** Sets this phone's theme for the list (null: follow the app). Not synced. */
+    suspend fun setTheme(listId: String, themeId: String?): Unit = mutex.withLock {
+        val list = _lists.value[listId] ?: return
+        save(list.copy(themeId = themeId))
+    }
+
     /** Records that this device now has a complete copy of the list. */
     suspend fun markFullSynced(listId: String): Unit = mutex.withLock {
         val list = _lists.value[listId] ?: return
