@@ -51,3 +51,28 @@ fun TodoList.mergeAudit(entries: Collection<AuditEntry>): Pair<TodoList, List<Au
     if (added.isEmpty()) return this to emptyList()
     return copy(audit = audit + added.associateBy { it.id }) to added
 }
+
+/**
+ * e.g. "“Milk”: your change (checked) was replaced by Sam's newer change (deleted)." or, for a diary,
+ * "“Dentist”: your newer change (Sat 10 Oct at 15:00) replaced Sam's change (Fri 9 Oct at 15:00)."
+ */
+fun Conflict.describe(): String {
+    val name = winner.text.ifBlank { loser.text }
+    return if (localLost) {
+        "“$name”: your change (${loser.conflictState(winner)}) was replaced by ${winner.editor}'s newer change (${winner.conflictState(loser)})."
+    } else {
+        "“$name”: your newer change (${winner.conflictState(loser)}) replaced ${loser.editor}'s change (${loser.conflictState(winner)})."
+    }
+}
+
+/** How this version differs from [other], in a few words. */
+private fun Item.conflictState(other: Item): String = when {
+    deleted -> "deleted"
+    localDate != null -> buildList {
+        if (text != other.text) add(text)
+        localDate?.let { add(formatDay(it) + (time?.let { t -> " at $t" } ?: "")) }
+    }.joinToString(", ")
+    text != other.text -> text
+    checked -> "checked"
+    else -> "unchecked"
+}

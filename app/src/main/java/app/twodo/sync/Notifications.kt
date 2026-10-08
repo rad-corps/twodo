@@ -13,7 +13,7 @@ import androidx.core.content.ContextCompat
 import app.twodo.MainActivity
 import app.twodo.R
 import app.twodo.model.Conflict
-import app.twodo.model.Item
+import app.twodo.model.describe
 
 object Notifications {
     const val CHANNEL_CONFLICTS = "conflicts"
@@ -111,20 +111,4 @@ object Notifications {
             .putExtra(EXTRA_LIST_ID, listId),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
-}
-
-/** e.g. "“Milk”: your change (checked) was replaced by Pixel 8's newer change (deleted)." */
-fun Conflict.describe(): String {
-    val name = winner.text.ifBlank { loser.text }
-    return if (localLost) {
-        "“$name”: your change (${loser.state()}) was replaced by ${winner.editor}'s newer change (${winner.state()})."
-    } else {
-        "“$name”: your newer change (${winner.state()}) replaced ${loser.editor}'s change (${loser.state()})."
-    }
-}
-
-private fun Item.state(): String = when {
-    deleted -> "deleted"
-    checked -> "checked"
-    else -> "unchecked"
 }

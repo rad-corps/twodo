@@ -95,7 +95,7 @@ import app.twodo.model.TodoList
 import app.twodo.sync.ListEvent
 import app.twodo.sync.Notifications
 import app.twodo.sync.SyncStatus
-import app.twodo.sync.describe
+import app.twodo.model.describe
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.journeyapps.barcodescanner.ScanContract

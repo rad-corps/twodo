@@ -48,4 +48,29 @@ class DescribeChangeTest {
         assertEquals(emptyList<AuditEntry>(), addedAgain)
         assertNull(auditEntryFor(milk, milk.moved(5.0, "B", 300)))
     }
+
+    @Test
+    fun concurrentDiaryEditsToDifferentFieldsAreReportedAndDescribed() {
+        val dentist = milk.copy(id = "d", text = "Dentist", date = "2026-10-09", time = "15:00")
+        val movedOnA = dentist.edited("A", "Adam", 200) { copy(date = "2026-10-10") }
+        val retimedOnB = dentist.edited("B", "Sam", 300) { copy(time = "16:30") }
+        val list = TodoList("l", "Family", ListKeys.newSecret(), items = mapOf("d" to movedOnA), kind = SpaceKind.DIARY)
+        val conflict = list.merge(listOf(retimedOnB)).conflicts.single()
+        val year = if (java.time.LocalDate.now().year == 2026) "" else " 2026"
+        assertEquals(
+            "“Dentist”: your change (Sat 10 Oct$year at 15:00) was replaced by Sam's newer change (Fri 9 Oct$year at 16:30).",
+            conflict.describe(),
+        )
+    }
+
+    @Test
+    fun listConflictDescriptionUnchanged() {
+        val onA = milk.edited("A", "Adam", 200) { copy(checked = true) }
+        val onB = milk.edited("B", "Sam", 300) { copy(deleted = true) }
+        val list = TodoList("l", "Groceries", ListKeys.newSecret(), items = mapOf("milk" to onA))
+        assertEquals(
+            "“Milk”: your change (checked) was replaced by Sam's newer change (deleted).",
+            list.merge(listOf(onB)).conflicts.single().describe(),
+        )
+    }
 }

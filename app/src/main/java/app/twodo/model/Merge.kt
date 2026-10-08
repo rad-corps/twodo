@@ -18,7 +18,7 @@ fun Item.moved(pos: Double, deviceId: String, now: Long): Item =
     copy(pos = pos, posVersion = Version(maxOf(now, (posVersion?.ts ?: 0) + 1), deviceId))
 
 private fun Item.sameContentAs(other: Item) =
-    text == other.text && checked == other.checked && deleted == other.deleted
+    text == other.text && checked == other.checked && deleted == other.deleted && date == other.date && time == other.time
 
 data class MergeResult(
     val list: TodoList,
