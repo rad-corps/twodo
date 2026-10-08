@@ -14,8 +14,8 @@ android {
         applicationId = "app.twodo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("twodo.versionCode").get().toInt()
+        versionName = providers.gradleProperty("twodo.versionName").get()
     }
 
     // Release signing key lives outside the repo; see README. Without it, release builds are unsigned.
