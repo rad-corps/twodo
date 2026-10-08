@@ -18,7 +18,14 @@ if (git status --porcelain) { throw 'Commit or stash your changes first.' }
 if ((git branch --show-current) -ne 'main') { throw 'Releases are made from main.' }
 if (git tag -l "v$Version") { throw "v$Version already exists." }
 if (-not (Test-Path "$HOME/.twodo/keystore.properties")) { throw 'Signing key not found in ~/.twodo/.' }
-if (-not $env:JAVA_HOME) { $env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot' }
+if (-not $env:JAVA_HOME) {
+    # Any JDK 17+ works; Android Studio ships one.
+    $env:JAVA_HOME = @(
+        (Get-ChildItem 'C:\Program Files\Eclipse Adoptium\jdk-2*' -ErrorAction SilentlyContinue | Select-Object -Last 1).FullName,
+        'C:\Program Files\Android\Android Studio\jbr'
+    ) | Where-Object { $_ -and (Test-Path "$_\bin\java.exe") } | Select-Object -First 1
+    if (-not $env:JAVA_HOME) { throw 'No JDK found; set JAVA_HOME to a JDK 17+.' }
+}
 
 # versionName comes from the argument; versionCode just has to keep increasing.
 $props = Get-Content gradle.properties

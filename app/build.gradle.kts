@@ -23,7 +23,8 @@ android {
     val releaseSigning = if (keystoreFile.exists()) {
         val props = Properties().apply { keystoreFile.inputStream().use(::load) }
         signingConfigs.create("release") {
-            storeFile = file(props.getProperty("storeFile"))
+            // A relative storeFile (e.g. "release.jks") is next to keystore.properties, so ~/.twodo can be copied as-is.
+            storeFile = keystoreFile.parentFile.resolve(props.getProperty("storeFile"))
             storePassword = props.getProperty("storePassword")
             keyAlias = props.getProperty("keyAlias")
             keyPassword = props.getProperty("keyPassword")
