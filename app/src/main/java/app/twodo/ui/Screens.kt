@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -60,10 +62,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.twodo.R
 import app.twodo.TwoDoApp
 import app.twodo.model.Invite
 import app.twodo.model.ShareLink
@@ -75,6 +79,8 @@ import com.journeyapps.barcodescanner.BarcodeEncoder
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 fun TwoDoRoot(app: TwoDoApp, pendingInvite: Invite?, onInviteHandled: () -> Unit) {
@@ -226,26 +232,44 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
                 )
                 IconButton(onClick = ::add, enabled = newText.isNotBlank()) { Icon(Icons.Default.Add, "Add") }
             }
-            LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(list.visibleItems, key = { it.id }) { item ->
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable { scope.launch { app.repo.setChecked(list.id, item.id, !item.checked) } }
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = item.checked,
-                            onCheckedChange = { scope.launch { app.repo.setChecked(list.id, item.id, it) } },
-                        )
-                        Text(
-                            item.text,
-                            modifier = Modifier.weight(1f),
-                            textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-                            color = if (item.checked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
-                        )
-                        IconButton(onClick = { scope.launch { app.repo.deleteItem(list.id, item.id) } }) {
-                            Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.outline)
+            // Local copy so dragging is smooth; committed to the repository when the drag ends.
+            var ordered by remember(list.visibleItems) { mutableStateOf(list.visibleItems) }
+            val listState = rememberLazyListState()
+            val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+                ordered = ordered.toMutableList().apply { add(to.index, removeAt(from.index)) }
+            }
+            LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
+                items(ordered, key = { it.id }) { item ->
+                    ReorderableItem(reorderState, key = item.id) {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surface)
+                                .clickable { scope.launch { app.repo.setChecked(list.id, item.id, !item.checked) } }
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = item.checked,
+                                onCheckedChange = { scope.launch { app.repo.setChecked(list.id, item.id, it) } },
+                            )
+                            Text(
+                                item.text,
+                                modifier = Modifier.weight(1f),
+                                textDecoration = if (item.checked) TextDecoration.LineThrough else null,
+                                color = if (item.checked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                            )
+                            IconButton(onClick = { scope.launch { app.repo.deleteItem(list.id, item.id) } }) {
+                                Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.outline)
+                            }
+                            Icon(
+                                painterResource(R.drawable.ic_drag_handle),
+                                "Reorder",
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.draggableHandle(onDragStopped = {
+                                    val index = ordered.indexOfFirst { it.id == item.id }
+                                    scope.launch { app.repo.moveItem(list.id, item.id, index) }
+                                }).padding(12.dp),
+                            )
                         }
                     }
                 }

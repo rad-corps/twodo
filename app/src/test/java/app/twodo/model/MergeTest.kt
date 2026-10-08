@@ -86,6 +86,35 @@ class MergeTest {
     }
 
     @Test
+    fun checkingDoesNotReorder() {
+        val eggs = milk.copy(id = "eggs", text = "Eggs", createdAt = 2)
+        val list = empty.with(milk.edit("A", 200) { copy(checked = true) }, eggs)
+        assertEquals(listOf("milk", "eggs"), list.visibleItems.map { it.id })
+    }
+
+    @Test
+    fun moveAndConcurrentTickAreBothKept() {
+        val movedOnA = milk.moved(pos = 5.0, deviceId = "A", now = 200)
+        val tickedOnB = milk.edit("B", 300) { copy(checked = true) }
+        val a = empty.with(movedOnA).merge(listOf(tickedOnB))
+        val b = empty.with(tickedOnB).merge(listOf(movedOnA))
+        for (side in listOf(a, b)) {
+            val item = side.list.items.getValue("milk")
+            assertTrue(item.checked)
+            assertEquals(5.0, item.position, 0.0)
+            assertTrue(side.conflicts.isEmpty())
+        }
+    }
+
+    @Test
+    fun latestMoveWins() {
+        val movedOnA = milk.moved(pos = 5.0, deviceId = "A", now = 200)
+        val movedOnB = milk.moved(pos = 9.0, deviceId = "B", now = 300)
+        assertEquals(9.0, empty.with(movedOnA).merge(listOf(movedOnB)).list.items.getValue("milk").position, 0.0)
+        assertEquals(9.0, empty.with(movedOnB).merge(listOf(movedOnA)).list.items.getValue("milk").position, 0.0)
+    }
+
+    @Test
     fun editKeepsVersionsIncreasingWhenClockIsBehind() {
         val edited = milk.edit("B", now = 50) { copy(checked = true) }
         assertTrue(edited.version > milk.version)

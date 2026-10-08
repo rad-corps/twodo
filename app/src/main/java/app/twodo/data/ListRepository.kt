@@ -9,6 +9,7 @@ import app.twodo.model.TodoList
 import app.twodo.model.Version
 import app.twodo.model.edited
 import app.twodo.model.merge
+import app.twodo.model.moved
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,17 +57,37 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         _lists.value -= listId
     }
 
+    /** Adds an item at the bottom of the list. */
     suspend fun addItem(listId: String, text: String) {
         val trimmed = text.trim().ifEmpty { return }
-        val now = System.currentTimeMillis()
-        val item = Item(
-            id = UUID.randomUUID().toString(),
-            text = trimmed,
-            createdAt = now,
-            version = Version(now, identity.deviceId),
-            editor = identity.deviceName,
-        )
-        putLocal(listId, item)
+        putLocal(listId) { list ->
+            val now = System.currentTimeMillis()
+            Item(
+                id = UUID.randomUUID().toString(),
+                text = trimmed,
+                createdAt = now,
+                version = Version(now, identity.deviceId),
+                editor = identity.deviceName,
+                pos = (list.visibleItems.maxOfOrNull { it.position } ?: 0.0) + 1,
+                posVersion = Version(now, identity.deviceId),
+            )
+        }
+    }
+
+    /** Moves an item so it ends up at [toIndex] among the visible items. */
+    suspend fun moveItem(listId: String, itemId: String, toIndex: Int) = putLocal(listId) { list ->
+        val others = list.visibleItems.filter { it.id != itemId }
+        val item = list.items[itemId] ?: return@putLocal null
+        val index = toIndex.coerceIn(0, others.size)
+        val before = others.getOrNull(index - 1)?.position
+        val after = others.getOrNull(index)?.position
+        val pos = when {
+            before == null && after == null -> item.position
+            before == null -> after!! - 1
+            after == null -> before + 1
+            else -> (before + after) / 2
+        }
+        item.moved(pos, identity.deviceId, System.currentTimeMillis())
     }
 
     suspend fun setChecked(listId: String, itemId: String, checked: Boolean) =

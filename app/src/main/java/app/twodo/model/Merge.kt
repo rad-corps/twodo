@@ -13,6 +13,10 @@ fun Item.edited(deviceId: String, deviceName: String, now: Long, change: Item.()
     )
 }
 
+/** Returns this item moved to [pos]; doesn't create a content version. */
+fun Item.moved(pos: Double, deviceId: String, now: Long): Item =
+    copy(pos = pos, posVersion = Version(maxOf(now, (posVersion?.ts ?: 0) + 1), deviceId))
+
 private fun Item.sameContentAs(other: Item) =
     text == other.text && checked == other.checked && deleted == other.deleted
 
@@ -36,27 +40,31 @@ fun TodoList.merge(remote: Collection<Item>): MergeResult {
 
     for (r in remote) {
         val l = items[r.id]
+        if (l == null) {
+            items[r.id] = r
+            accepted += r
+            continue
+        }
         val lost = superseded[r.id].orEmpty()
-        when {
-            l == null -> {
-                items[r.id] = r
-                accepted += r
-            }
-            r.version == l.version || r.version in l.history || r.version in lost -> Unit
-            l.version in r.history -> {
-                items[r.id] = r
-                accepted += r
-            }
+        var merged = when {
+            r.version == l.version || r.version in l.history || r.version in lost -> l
+            l.version in r.history -> r
             else -> {
                 val remoteWins = r.version > l.version
                 val winner = if (remoteWins) r else l
                 val loser = if (remoteWins) l else r
-                items[r.id] = winner
                 superseded[r.id] = lost + loser.version
-                if (remoteWins) accepted += r
                 // Both sides making the same change isn't worth telling anyone about.
                 if (!winner.sameContentAs(loser)) conflicts += Conflict(id, name, winner, loser, localLost = remoteWins)
+                winner
             }
+        }
+        // Position is merged on its own: the latest move wins, silently.
+        val latestMove = maxOf(l, r, compareBy(nullsFirst()) { it.posVersion })
+        merged = merged.copy(pos = latestMove.pos, posVersion = latestMove.posVersion)
+        if (merged != l) {
+            items[r.id] = merged
+            accepted += merged
         }
     }
     return MergeResult(copy(items = items, superseded = superseded), accepted, conflicts)

@@ -22,7 +22,15 @@ data class Item(
     val editor: String,
     /** Versions this one descends from, newest first, capped at [HISTORY_LIMIT]. */
     val history: List<Version> = emptyList(),
-)
+    /**
+     * Manual sort position. Synced as its own last-writer-wins value (stamped by [posVersion]) so that
+     * moving an item never conflicts with someone ticking it.
+     */
+    val pos: Double? = null,
+    val posVersion: Version? = null,
+) {
+    val position: Double get() = pos ?: createdAt.toDouble()
+}
 
 @Serializable
 data class TodoList(
@@ -35,8 +43,7 @@ data class TodoList(
     val superseded: Map<String, Set<Version>> = emptyMap(),
 ) {
     val visibleItems: List<Item>
-        get() = items.values.filter { !it.deleted }
-            .sortedWith(compareBy({ it.checked }, { it.createdAt }, { it.id }))
+        get() = items.values.filter { !it.deleted }.sortedWith(compareBy({ it.position }, { it.id }))
 }
 
 /** Two devices edited the same item concurrently; [winner] (the later edit) was kept. */

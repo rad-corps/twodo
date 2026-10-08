@@ -50,6 +50,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("io.getstream:stream-webrtc-android:1.3.10")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("sh.calvin.reorderable:reorderable:3.1.0")
 
     testImplementation("junit:junit:4.13.2")
 }
