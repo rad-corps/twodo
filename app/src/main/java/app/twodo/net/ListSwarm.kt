@@ -206,6 +206,7 @@ class ListSwarm(
             putJsonObject("answer") { put("type", "answer"); put("sdp", answer) }
         })
         trace("answered ${from.take(4)}; answer took ${SystemClock.elapsedRealtime() - answerStarted}ms")
+        retryIfNotConnected(peer)
     }
 
     private suspend fun handleAnswer(from: String, offerId: String, sdp: String) {
@@ -222,6 +223,23 @@ class ListSwarm(
         runCatching { offer.peer.acceptAnswer(sdp) }.onFailure { e ->
             Log.w(TAG, "Accepting answer failed", e)
             drop(offer.peer)
+        }
+        retryIfNotConnected(offer.peer)
+    }
+
+    /**
+     * A direct connection opens within a few hundred ms when it's going to work, while WebRTC takes
+     * ~15 s to give up. If [peer] isn't open soon, drop it and try again with fresh ports, which often
+     * gets through a NAT that the first attempt didn't.
+     */
+    private fun retryIfNotConnected(peer: Peer) {
+        scope.launch {
+            delay(CONNECT_TIMEOUT_MS)
+            val id = peer.remotePeerId ?: return@launch
+            if (stopped || peer.isOpen || peers[id] !== peer) return@launch
+            trace("connection to ${id.take(4)} didn't open in ${CONNECT_TIMEOUT_MS}ms; retrying")
+            drop(peer)
+            if (openPeers.isEmpty()) announce()
         }
     }
 
@@ -247,6 +265,7 @@ class ListSwarm(
         private const val TAG = "TwoDo"
         private const val ANNOUNCE_INTERVAL_MS = 30_000L
         private const val SEARCH_INTERVAL_MS = 10_000L
+        private const val CONNECT_TIMEOUT_MS = 5_000L
         private const val OFFER_TTL_MS = 60_000L
         private const val OFFERS_PER_ANNOUNCE = 3
         private const val ID_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
