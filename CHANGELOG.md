@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.4.0 — 2026-10-08
+
 **Lists now sync even when the phones can't connect directly — and when one of them is off.**
 - When two phones can't reach each other (common on mobile data), changes now go through free public
   Nostr relays instead. They're end-to-end encrypted: the relays only ever see scrambled data.
