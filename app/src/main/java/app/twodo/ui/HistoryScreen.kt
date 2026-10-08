@@ -83,10 +83,17 @@ internal fun HistoryScreen(list: TodoList, myDeviceId: String, names: Map<String
 
 /** "Sam ticked Milk" with the time on the right. */
 @Composable
-internal fun AuditRow(entry: AuditEntry, myDeviceId: String, names: Map<String, String>, showDate: Boolean = false) {
+internal fun AuditRow(
+    entry: AuditEntry,
+    myDeviceId: String,
+    names: Map<String, String>,
+    showDate: Boolean = false,
+    /** Inside a dialog, which already has its own padding. */
+    compact: Boolean = false,
+) {
     val who = if (entry.by == myDeviceId) "You" else names[entry.by] ?: entry.byName
     val at = Instant.ofEpochMilli(entry.ts).atZone(ZoneId.systemDefault())
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = if (compact) 0.dp else 20.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
         Text("$who ${entry.description}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Text(
             (if (showDate) dayLabel(at.toLocalDate()) + " " else "") + at.format(timeOfDay),

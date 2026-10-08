@@ -3,7 +3,7 @@ package app.twodo.model
 import java.net.URLDecoder
 import java.net.URLEncoder
 
-data class Invite(val listId: String, val name: String, val secret: String)
+data class Invite(val listId: String, val name: String, val secret: String, val kind: SpaceKind = SpaceKind.LIST)
 
 /**
  * What the QR code and "Send link" carry. Anyone holding it can edit the list.
@@ -17,7 +17,8 @@ object ShareLink {
     private val linkPattern = Regex("""(?:twodo://join\?|https://rad-corps\.github\.io/twodo/join/?#)(\S+)""")
 
     fun build(list: TodoList): String =
-        "${WEB_PREFIX}id=${list.id}&name=${URLEncoder.encode(list.name, "UTF-8")}&k=${list.secret}"
+        "${WEB_PREFIX}id=${list.id}&name=${URLEncoder.encode(list.name, "UTF-8")}&k=${list.secret}" +
+            if (list.kind == SpaceKind.DIARY) "&t=diary" else ""
 
     /** Message text to send along with the link. */
     fun message(list: TodoList): String = "Join “${list.name}” on TwoDo: ${build(list)}"
@@ -31,6 +32,7 @@ object ShareLink {
         }.toMap()
         val id = params["id"]?.takeIf { it.isNotBlank() } ?: return null
         val secret = params["k"]?.takeIf { ListKeys.isValidSecret(it) } ?: return null
-        return Invite(id, params["name"].orEmpty().ifBlank { "Shared list" }, secret)
+        val kind = if (params["t"] == "diary") SpaceKind.DIARY else SpaceKind.LIST
+        return Invite(id, params["name"].orEmpty().ifBlank { "Shared list" }, secret, kind)
     }
 }

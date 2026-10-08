@@ -131,6 +131,13 @@ class MergeTest {
     }
 
     @Test
+    fun diaryLinksSayTheyAreDiaries() {
+        val diary = empty.copy(name = "Family", kind = SpaceKind.DIARY)
+        assertEquals(SpaceKind.DIARY, ShareLink.parse(ShareLink.build(diary))?.kind)
+        assertEquals(SpaceKind.LIST, ShareLink.parse(ShareLink.build(empty))?.kind)
+    }
+
+    @Test
     fun shareLinkIsWebAndFoundInsideMessages() {
         val list = empty.copy(name = "Groceries")
         val expected = Invite(list.id, list.name, list.secret)

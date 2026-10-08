@@ -58,6 +58,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -87,6 +90,7 @@ import app.twodo.TwoDoApp
 import app.twodo.model.Invite
 import app.twodo.model.Item
 import app.twodo.model.ShareLink
+import app.twodo.model.SpaceKind
 import app.twodo.model.TodoList
 import app.twodo.sync.ListEvent
 import app.twodo.sync.Notifications
@@ -147,7 +151,12 @@ fun TwoDoRoot(
         ListsScreen(app, lists.values.sortedBy { it.name.lowercase() }, status, snackbar, onOpen = { openListId = it })
     } else {
         BackHandler { openListId = null }
-        ListScreen(app, open, status[open.id] ?: SyncStatus(), snackbar, onBack = { openListId = null })
+        val openStatus = status[open.id] ?: SyncStatus()
+        if (open.kind == SpaceKind.DIARY) {
+            DiaryScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
+        } else {
+            ListScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
+        }
     }
 }
 
@@ -182,7 +191,7 @@ private fun ListsScreen(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
                 icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("New list") },
+                text = { Text("New") },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -196,7 +205,7 @@ private fun ListsScreen(
                 Text("No lists yet", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Create a list, or join one by scanning the QR code on another phone.",
+                    "Create a list or a diary, or join one by scanning the QR code on another phone.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
@@ -204,7 +213,6 @@ private fun ListsScreen(
         }
         LazyColumn(contentPadding = padding) {
             items(lists, key = { it.id }) { list ->
-                val items = list.visibleItems
                 Row(
                     Modifier.fillMaxWidth().clickable { onOpen(list.id) }.padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -212,7 +220,7 @@ private fun ListsScreen(
                     Column(Modifier.weight(1f)) {
                         Text(list.name, style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "${items.count { !it.checked }} to do · ${status[list.id].summary()}",
+                            "${list.summary()} · ${status[list.id].summary()}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -225,9 +233,9 @@ private fun ListsScreen(
     }
 
     if (creating) {
-        TextPromptDialog("New list", "Name", confirm = "Create", onDismiss = { creating = false }) { name ->
+        NewSpaceDialog(onDismiss = { creating = false }) { name, kind ->
             creating = false
-            scope.launch { onOpen(app.repo.createList(name).id) }
+            scope.launch { onOpen(app.repo.createList(name, kind).id) }
         }
     }
     if (joining) {
@@ -555,6 +563,44 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                 onDismiss()
             }) { Text("Save") }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** "Groceries: 3 to do" / "Family diary: 2 today". */
+private fun TodoList.summary(): String = when (kind) {
+    SpaceKind.DIARY -> {
+        val today = java.time.LocalDate.now().toString()
+        val count = items.values.count { !it.deleted && it.date == today }
+        if (count == 0) "Diary · nothing today" else "Diary · $count today"
+    }
+    SpaceKind.LIST -> "${visibleItems.count { !it.checked }} to do"
+}
+
+/** Name plus a List / Diary choice. */
+@Composable
+private fun NewSpaceDialog(onDismiss: () -> Unit, onCreate: (String, SpaceKind) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf(SpaceKind.LIST) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (kind == SpaceKind.DIARY) "New diary" else "New list") },
+        text = {
+            Column {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    SpaceKind.entries.forEachIndexed { index, option ->
+                        SegmentedButton(
+                            selected = kind == option,
+                            onClick = { kind = option },
+                            shape = SegmentedButtonDefaults.itemShape(index, SpaceKind.entries.size),
+                        ) { Text(if (option == SpaceKind.DIARY) "Diary" else "List") }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onCreate(name, kind) }, enabled = name.isNotBlank()) { Text("Create") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

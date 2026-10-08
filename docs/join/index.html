@@ -40,7 +40,9 @@
     document.getElementById('copy').style.display = 'none';
   } else {
     document.getElementById('title').textContent = 'Join “' + name + '”';
-    const query = 'join?id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name) + '&k=' + encodeURIComponent(key);
+    if (params.get('t') === 'diary') document.getElementById('sub').textContent = 'Open this diary in TwoDo to see and add to it together.';
+    // Pass every parameter through (id, name, k, and t for diaries) so newer link fields keep working.
+    const query = 'join?' + params.toString();
     // Chrome on Android understands intent: links and falls back to the download page if TwoDo isn't installed.
     document.getElementById('open').href = /Android/i.test(navigator.userAgent)
       ? 'intent://' + query + '#Intent;scheme=twodo;package=app.twodo;S.browser_fallback_url=' + encodeURIComponent(releases) + ';end'

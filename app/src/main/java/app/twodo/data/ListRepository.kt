@@ -6,6 +6,7 @@ import app.twodo.model.Conflict
 import app.twodo.model.Invite
 import app.twodo.model.Item
 import app.twodo.model.ListKeys
+import app.twodo.model.SpaceKind
 import app.twodo.model.TodoList
 import app.twodo.model.Version
 import app.twodo.model.auditEntryFor
@@ -24,6 +25,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.time.LocalDate
 import java.util.UUID
 
 /** A local edit that needs to be sent to peers, with its audit entry if it's worth recording. */
@@ -46,15 +48,16 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     private val _conflicts = MutableSharedFlow<Conflict>(extraBufferCapacity = 64)
     val conflicts: SharedFlow<Conflict> = _conflicts
 
-    suspend fun createList(name: String): TodoList = mutex.withLock {
-        val list = TodoList(UUID.randomUUID().toString(), name.trim().ifEmpty { "My list" }, ListKeys.newSecret(), createdHere = true)
+    suspend fun createList(name: String, kind: SpaceKind = SpaceKind.LIST): TodoList = mutex.withLock {
+        val fallback = if (kind == SpaceKind.DIARY) "Diary" else "My list"
+        val list = TodoList(UUID.randomUUID().toString(), name.trim().ifEmpty { fallback }, ListKeys.newSecret(), createdHere = true, kind = kind)
         save(list)
         list
     }
 
     /** Adds a shared list from an invite; returns the existing one if already joined. */
     suspend fun joinList(invite: Invite): TodoList = mutex.withLock {
-        _lists.value[invite.listId] ?: TodoList(invite.listId, invite.name, invite.secret).also { save(it) }
+        _lists.value[invite.listId] ?: TodoList(invite.listId, invite.name, invite.secret, kind = invite.kind).also { save(it) }
     }
 
     /** Removes the list from this device only; peers keep their copies. */
@@ -94,6 +97,35 @@ class ListRepository(private val dir: File, private val identity: Identity) {
             else -> (before + after) / 2
         }
         item.moved(pos, identity.deviceId, System.currentTimeMillis())
+    }
+
+    /** Adds a diary entry on [date], optionally at [time] ("HH:mm"). */
+    suspend fun addEntry(listId: String, date: LocalDate, text: String, time: String? = null) {
+        val trimmed = text.trim().ifEmpty { return }
+        putLocal(listId) {
+            val now = System.currentTimeMillis()
+            Item(
+                id = UUID.randomUUID().toString(),
+                text = trimmed,
+                createdAt = now,
+                version = Version(now, identity.deviceId),
+                editor = identity.deviceName,
+                date = date.toString(),
+                time = time,
+            )
+        }
+    }
+
+    /** Changes a diary entry's text, day and/or time. Does nothing if nothing changed. */
+    suspend fun editEntry(listId: String, itemId: String, text: String, date: LocalDate, time: String?) {
+        val trimmed = text.trim().ifEmpty { return }
+        putLocal(listId) { list ->
+            val item = list.items[itemId] ?: return@putLocal null
+            if (item.text == trimmed && item.date == date.toString() && item.time == time) return@putLocal null
+            item.edited(identity.deviceId, identity.deviceName, System.currentTimeMillis()) {
+                copy(text = trimmed, date = date.toString(), time = time)
+            }
+        }
     }
 
     suspend fun setChecked(listId: String, itemId: String, checked: Boolean) =
