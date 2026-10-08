@@ -1,15 +1,13 @@
 <#
 .SYNOPSIS
 Builds a signed release APK and publishes it as a GitHub Release, where Obtainium picks it up.
+The release notes are the "## Unreleased" section of CHANGELOG.md, which becomes "## v<Version> — <date>".
 
 .EXAMPLE
-./scripts/release.ps1 0.2.0
-./scripts/release.ps1 0.2.0 -Notes "Adds list renaming"
+./scripts/release.ps1 0.4.0
 #>
 param(
-    [Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
-    # Release notes; GitHub generates them from the commits when omitted.
-    [string]$Notes
+    [Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot)
@@ -27,6 +25,17 @@ if (-not $env:JAVA_HOME) {
     if (-not $env:JAVA_HOME) { throw 'No JDK found; set JAVA_HOME to a JDK 17+.' }
 }
 
+# Release notes: everything under "## Unreleased" up to the next version heading.
+$changelog = Get-Content CHANGELOG.md -Raw
+$match = [regex]::Match($changelog, '(?ms)^## Unreleased\s*\r?\n(.*?)(?=^## )')
+$notes = $match.Groups[1].Value.Trim()
+if (-not $match.Success -or -not $notes) { throw 'Add release notes under "## Unreleased" in CHANGELOG.md first.' }
+$date = Get-Date -Format 'yyyy-MM-dd'
+$changelog = $changelog.Substring(0, $match.Index) + "## Unreleased`n`n## v$Version — $date`n`n$notes`n`n" +
+    $changelog.Substring($match.Index + $match.Length)
+Set-Content CHANGELOG.md $changelog.TrimEnd() -NoNewline
+Add-Content CHANGELOG.md ''
+
 # versionName comes from the argument; versionCode just has to keep increasing.
 $props = Get-Content gradle.properties
 $code = 1 + [int]($props | Select-String '^twodo\.versionCode=(\d+)').Matches[0].Groups[1].Value
@@ -36,8 +45,8 @@ Set-Content gradle.properties $props
 
 ./gradlew testDebugUnitTest assembleRelease
 if ($LASTEXITCODE) {
-    git checkout -- gradle.properties
-    throw 'Build failed; version left unchanged.'
+    git checkout -- gradle.properties CHANGELOG.md
+    throw 'Build failed; version and changelog left unchanged.'
 }
 
 $apk = "app/build/outputs/apk/release/TwoDo-v$Version.apk"
@@ -48,7 +57,9 @@ git tag -a "v$Version" -m "TwoDo v$Version"
 git push origin main "v$Version"
 if ($LASTEXITCODE) { throw 'Push failed; the release commit and tag are local only.' }
 
-$notesArgs = if ($Notes) { @('--notes', $Notes) } else { @('--generate-notes') }
-gh release create "v$Version" $apk --title "TwoDo v$Version" @notesArgs
+$notesFile = New-TemporaryFile
+Set-Content $notesFile $notes
+gh release create "v$Version" $apk --title "TwoDo v$Version" --notes-file $notesFile
+Remove-Item $notesFile
 if ($LASTEXITCODE) { throw 'Creating the GitHub release failed; retry with: gh release create ...' }
 Write-Host "Released v$Version (versionCode $code)."

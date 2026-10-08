@@ -1,0 +1,60 @@
+# Changelog
+
+Release notes for each version. `scripts/release.ps1` publishes the **Unreleased** section as the
+GitHub release notes and renames it to the version, so this file and the releases always match.
+
+## Unreleased
+
+## v0.3.3 — 2026-10-08
+
+- **Much less background traffic and battery use.** When the other phone can't be reached, TwoDo now looks for it less and less often (up to every 2 minutes) instead of every 10 seconds, and looks quickly again as soon as you open the app, change network, or show a share code.
+- Smoother connecting: cleaning up failed connection attempts no longer holds up the rest of the app.
+
+## v0.3.2 — 2026-10-08
+
+- **Faster joining when TwoDo is already running:** the app now keeps its connections to the meeting-point servers open and shares them between lists, so a newly opened share link connects in about a second.
+- **The sharing phone looks harder while its QR/share dialog is open**, so the other phone is found straight away.
+- **Settings > Connection log:** shows what happened while connecting (with timings). If joining is slow, tap Copy and send the log over so we can see where the time went.
+
+## v0.3.1 — 2026-10-08
+
+**Much faster joining.** Opening a shared list or diary now connects and syncs in about 2 seconds (was 30-60 s, and sometimes didn't finish). Big diaries sync in a few seconds.
+
+**You can see what's happening while someone joins:**
+- The joining phone shows "Connecting… / Looking for the other phone… / Getting the list…", then "Joined “Shop” with Adam".
+- The sharing phone's QR dialog shows "Waiting for someone to scan…", then "✓ Sam joined".
+
+**Sync in background is now on by default**, so the other phone can reach yours while TwoDo is closed (you can turn it off in Settings).
+
+Also: connection attempts that stall are retried after 5 s instead of 15, and the status line only says "Offline" when the phone really has no network.
+
+## v0.3.0 — 2026-10-08
+
+**New: shared diaries.** New > Diary. Opens on today; swipe (or the arrows) to change day, tap a day in the week strip, or tap the date for a calendar where you can also type a date. Add entries with an optional time; tap one to edit, move or delete it.
+
+**New: History.** Every list and diary keeps a shared log of who changed what and when (menu > History; diary entries also show their own history).
+
+Also:
+- Big lists and diaries now sync (updates over ~256 KB used to fail).
+- Conflicting diary edits are reported with the day/time that won.
+- Replaced two public meeting-point servers that had stopped working.
+- Faster, smaller release build.
+
+Update every phone before sharing a diary: 0.2.x doesn't know about diaries and could strip entries' dates when editing them.
+
+## v0.2.1 — 2026-10-08
+
+- Fix: "Remove from this phone" now really removes the list. On 0.2.0 the list came back (including after a restart). Lists you tried to remove on 0.2.0 are still there; remove them again after updating.
+
+## v0.2.0 — 2026-10-08
+
+- Notifications: someone joining or leaving a list, and a quiet summary of changes others make while TwoDo is closed (Settings toggle). Changed rows briefly light up while you're looking at the list.
+- Share links are now normal web links (tappable in Messenger etc.) that open TwoDo. Older twodo:// links still work.
+- Join a list from a screenshot of its QR code (Join list > Choose screenshot, or share the image to TwoDo).
+- Removing a list tells the others.
+
+Update all phones before sharing new lists: v0.1.0 doesn't understand the new links.
+
+## v0.1.0 — 2026-10-08
+
+First release: shared lists over peer-to-peer sync, QR sharing, drag to reorder, who-ticked-what, conflict notices, dark mode.

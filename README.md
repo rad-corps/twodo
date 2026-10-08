@@ -42,12 +42,15 @@ same key, or the app has to be uninstalled (losing its lists) before a new versi
 
 ### Publishing a release
 
+Add the changes under **## Unreleased** in [CHANGELOG.md](CHANGELOG.md) as you go, then:
+
 ```
-./scripts/release.ps1 0.2.0
+./scripts/release.ps1 0.4.0
 ```
 
-Bumps the version in `gradle.properties`, runs the tests, builds the signed APK, commits, tags `v0.2.0`,
-pushes, and creates a GitHub Release with the APK attached — which is what Obtainium watches.
+Turns the Unreleased notes into a `v0.4.0` section, bumps the version in `gradle.properties`, runs the
+tests, builds the signed APK, commits, tags, pushes, and creates a GitHub Release with the APK and those
+notes attached — which is what Obtainium watches.
 
 ## Using it
 
