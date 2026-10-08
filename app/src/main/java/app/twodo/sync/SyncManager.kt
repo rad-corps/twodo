@@ -6,8 +6,10 @@ import android.net.Network
 import android.util.Log
 import app.twodo.data.Identity
 import app.twodo.data.ListRepository
+import app.twodo.model.AuditEntry
 import app.twodo.model.Item
 import app.twodo.model.ListKeys
+import app.twodo.model.describeChange
 import app.twodo.net.ListSwarm
 import app.twodo.net.Peer
 import app.twodo.net.SwarmEvents
@@ -35,10 +37,13 @@ sealed class SyncMessage {
     @SerialName("hello")
     data class Hello(val deviceId: String, val deviceName: String) : SyncMessage()
 
-    /** [full] is the whole list, sent when a connection opens; otherwise just changed items. */
+    /**
+     * [full] is the whole list, sent when a connection opens; otherwise just changed items. [audit]
+     * carries change-log entries (an extra field, so older versions simply ignore it).
+     */
     @Serializable
     @SerialName("items")
-    data class Items(val items: List<Item>, val full: Boolean = false) : SyncMessage()
+    data class Items(val items: List<Item>, val full: Boolean = false, val audit: List<AuditEntry> = emptyList()) : SyncMessage()
 
     /** The sender removed the list from their device. */
     @Serializable
@@ -91,7 +96,9 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
             }
         }
         scope.launch {
-            repo.localEdits.collect { edit -> broadcast(edit.listId, SyncMessage.Items(listOf(edit.item))) }
+            repo.localEdits.collect { edit ->
+                broadcast(edit.listId, SyncMessage.Items(listOf(edit.item), audit = listOfNotNull(edit.audit)))
+            }
         }
         appContext.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(
             object : ConnectivityManager.NetworkCallback() {
@@ -134,7 +141,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     override suspend fun onPeerOpen(swarm: ListSwarm, peer: Peer) {
         val list = repo.lists.value[swarm.listId] ?: return
         send(swarm, peer, SyncMessage.Hello(identity.deviceId, identity.deviceName))
-        send(swarm, peer, SyncMessage.Items(list.items.values.toList(), full = true))
+        send(swarm, peer, SyncMessage.Items(list.items.values.toList(), full = true, audit = list.audit.values.toList()))
     }
 
     override suspend fun onPeerMessage(swarm: ListSwarm, peer: Peer, text: String) {
@@ -157,14 +164,14 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 publishStatus()
             }
             is SyncMessage.Items -> {
-                val changes = repo.applyRemote(swarm.listId, message.items)
+                val result = repo.applyRemote(swarm.listId, message.items, message.audit)
                 // Pass changes on so devices that aren't directly connected still converge.
-                if (changes.isNotEmpty()) {
-                    val accepted = changes.map { it.second }
-                    swarm.openPeers.filter { it !== peer }.forEach { send(swarm, it, SyncMessage.Items(accepted)) }
+                if (result.changes.isNotEmpty() || result.newAudit.isNotEmpty()) {
+                    val forward = SyncMessage.Items(result.changes.map { it.second }, audit = result.newAudit)
+                    swarm.openPeers.filter { it !== peer }.forEach { send(swarm, it, forward) }
                 }
                 val quiet = message.full && firstSyncPeers.remove(peer)
-                if (!quiet) announceChanges(swarm.listId, changes)
+                if (!quiet) announceChanges(swarm.listId, result.changes)
             }
             is SyncMessage.Leave -> {
                 val name = repo.removeMember(swarm.listId, message.deviceId) ?: peer.deviceName ?: return

@@ -1,14 +1,17 @@
 package app.twodo.data
 
 import android.util.Log
+import app.twodo.model.AuditEntry
 import app.twodo.model.Conflict
 import app.twodo.model.Invite
 import app.twodo.model.Item
 import app.twodo.model.ListKeys
 import app.twodo.model.TodoList
 import app.twodo.model.Version
+import app.twodo.model.auditEntryFor
 import app.twodo.model.edited
 import app.twodo.model.merge
+import app.twodo.model.mergeAudit
 import app.twodo.model.moved
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -23,8 +26,11 @@ import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.UUID
 
-/** A local edit that needs to be sent to peers. */
-data class LocalEdit(val listId: String, val item: Item)
+/** A local edit that needs to be sent to peers, with its audit entry if it's worth recording. */
+data class LocalEdit(val listId: String, val item: Item, val audit: AuditEntry?)
+
+/** Result of applying a peer's data: items that changed (with their previous state) and new audit entries. */
+data class RemoteResult(val changes: List<Pair<Item?, Item>>, val newAudit: List<AuditEntry>)
 
 /** All lists on this device, one JSON file each. The single source of truth for UI and sync. */
 class ListRepository(private val dir: File, private val identity: Identity) {
@@ -97,16 +103,18 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         editItem(listId, itemId) { copy(deleted = true) }
 
     /**
-     * Applies items from a peer. Returns each item that changed local state, paired with what it was
-     * before (null if new), so changes can be forwarded and announced.
+     * Applies items and audit entries from a peer. Returns what changed locally, so it can be
+     * forwarded and announced.
      */
-    suspend fun applyRemote(listId: String, items: List<Item>): List<Pair<Item?, Item>> = mutex.withLock {
-        val list = _lists.value[listId] ?: return emptyList()
-        val result = list.merge(items)
-        if (result.list != list) save(result.list)
-        result.conflicts.forEach { _conflicts.tryEmit(it) }
-        result.accepted.map { list.items[it.id] to it }
-    }
+    suspend fun applyRemote(listId: String, items: List<Item>, audit: List<AuditEntry> = emptyList()): RemoteResult =
+        mutex.withLock {
+            val list = _lists.value[listId] ?: return RemoteResult(emptyList(), emptyList())
+            val result = list.merge(items)
+            val (merged, newAudit) = result.list.mergeAudit(audit)
+            if (merged != list) save(merged)
+            result.conflicts.forEach { _conflicts.tryEmit(it) }
+            RemoteResult(result.accepted.map { list.items[it.id] to it }, newAudit)
+        }
 
     data class MemberUpdate(val isNew: Boolean, val firstContact: Boolean, val worthAnnouncing: Boolean)
 
@@ -137,8 +145,10 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     private suspend fun putLocal(listId: String, makeItem: (TodoList) -> Item?): Unit = mutex.withLock {
         val list = _lists.value[listId] ?: return
         val item = makeItem(list) ?: return
-        save(list.copy(items = list.items + (item.id to item)))
-        _localEdits.tryEmit(LocalEdit(listId, item))
+        val entry = auditEntryFor(list.items[item.id], item)
+        val audit = if (entry != null) list.audit + (entry.id to entry) else list.audit
+        save(list.copy(items = list.items + (item.id to item), audit = audit))
+        _localEdits.tryEmit(LocalEdit(listId, item, entry))
     }
 
     private suspend fun save(list: TodoList) {

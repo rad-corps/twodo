@@ -243,24 +243,10 @@ private fun ListsScreen(
 private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var newText by rememberSaveable(list.id) { mutableStateOf("") }
-    var sharing by remember { mutableStateOf(false) }
-    var menu by remember { mutableStateOf(false) }
-    var confirmRemove by remember { mutableStateOf(false) }
+    var showHistory by rememberSaveable(list.id) { mutableStateOf(false) }
     val names by app.sync.names.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val highlighted = remember { mutableStateMapOf<String, Long>() }
-    LaunchedEffect(list.id) {
-        Notifications.clearChanges(context, list.id)
-        app.sync.events.collect { event ->
-            if (event !is ListEvent.Changed || event.listId != list.id) return@collect
-            val stamp = System.currentTimeMillis()
-            event.itemIds.forEach { highlighted[it] = stamp }
-            launch {
-                delay(HIGHLIGHT_MS)
-                event.itemIds.forEach { if (highlighted[it] == stamp) highlighted.remove(it) }
-            }
-        }
-    }
+    val highlighted = rememberRemoteHighlights(app, list.id)
+    if (showHistory) return HistoryScreen(list, app.identity.deviceId, names, onBack = { showHistory = false })
 
     fun add() {
         val text = newText
@@ -269,34 +255,7 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            SyncDot(status)
-                            Spacer(Modifier.width(6.dp))
-                            Text(status.summary(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                },
-                colors = flatBar(),
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-                },
-                actions = {
-                    IconButton(onClick = { sharing = true }) { Icon(Icons.Default.Share, "Share") }
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Remove from this phone") },
-                            onClick = { menu = false; confirmRemove = true },
-                        )
-                    }
-                },
-            )
-        },
+        topBar = { SpaceTopBar(app, list, status, onBack, onHistory = { showHistory = true }) },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -381,6 +340,38 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
         }
     }
 
+}
+
+/** Title with sync status, Share, and a menu with History and Remove — shared by lists and diaries. */
+@Composable
+internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBack: () -> Unit, onHistory: () -> Unit) {
+    var sharing by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
+    TopAppBar(
+        title = {
+            Column {
+                Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SyncDot(status)
+                    Spacer(Modifier.width(6.dp))
+                    Text(status.summary(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        colors = flatBar(),
+        navigationIcon = {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+        },
+        actions = {
+            IconButton(onClick = { sharing = true }) { Icon(Icons.Default.Share, "Share") }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More") }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onHistory() })
+                DropdownMenuItem(text = { Text("Remove from this phone") }, onClick = { menu = false; confirmRemove = true })
+            }
+        },
+    )
     if (sharing) ShareDialog(list, onDismiss = { sharing = false })
     if (confirmRemove) {
         AlertDialog(
@@ -399,8 +390,31 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
     }
 }
 
+/**
+ * Item ids changed by others in the last moment, for a brief highlight. Also clears the list's
+ * "changes" notification, since the user is now looking at it.
+ */
 @Composable
-private fun ShareDialog(list: TodoList, onDismiss: () -> Unit) {
+internal fun rememberRemoteHighlights(app: TwoDoApp, listId: String): Map<String, Long> {
+    val context = LocalContext.current
+    val highlighted = remember(listId) { mutableStateMapOf<String, Long>() }
+    LaunchedEffect(listId) {
+        Notifications.clearChanges(context, listId)
+        app.sync.events.collect { event ->
+            if (event !is ListEvent.Changed || event.listId != listId) return@collect
+            val stamp = System.currentTimeMillis()
+            event.itemIds.forEach { highlighted[it] = stamp }
+            launch {
+                delay(HIGHLIGHT_MS)
+                event.itemIds.forEach { if (highlighted[it] == stamp) highlighted.remove(it) }
+            }
+        }
+    }
+    return highlighted
+}
+
+@Composable
+internal fun ShareDialog(list: TodoList, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val link = remember(list.id) { ShareLink.build(list) }
     val qr = remember(link) { BarcodeEncoder().encodeBitmap(link, BarcodeFormat.QR_CODE, 720, 720).asImageBitmap() }
@@ -546,7 +560,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun TextPromptDialog(
+internal fun TextPromptDialog(
     title: String,
     label: String,
     confirm: String,
@@ -585,14 +599,14 @@ private fun tickedBy(item: Item, myDeviceId: String, names: Map<String, String>)
 }
 
 @Composable
-private fun flatBar() = TopAppBarDefaults.topAppBarColors(
+internal fun flatBar() = TopAppBarDefaults.topAppBarColors(
     containerColor = MaterialTheme.colorScheme.background,
     scrolledContainerColor = MaterialTheme.colorScheme.background,
 )
 
 /** Small status dot: accent when connected to another device, grey otherwise. */
 @Composable
-private fun SyncDot(status: SyncStatus?) {
+internal fun SyncDot(status: SyncStatus?) {
     val connected = !status?.peerNames.isNullOrEmpty()
     Box(
         Modifier.size(8.dp).clip(CircleShape)
@@ -600,9 +614,9 @@ private fun SyncDot(status: SyncStatus?) {
     )
 }
 
-private const val HIGHLIGHT_MS = 2_500L
+internal const val HIGHLIGHT_MS = 2_500L
 
-private fun SyncStatus?.summary(): String = when {
+internal fun SyncStatus?.summary(): String = when {
     this == null || trackersOnline == 0 && peerNames.isEmpty() -> "Offline"
     peerNames.isEmpty() -> "Looking for other devices…"
     peerNames.size == 1 -> "Connected to ${peerNames.single()}"

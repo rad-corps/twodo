@@ -1,6 +1,8 @@
 package app.twodo.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.time.LocalDate
 
 /** Identifies one edit of an item: when it was made and by which device. Ordered by time, then device. */
 @Serializable
@@ -28,8 +30,33 @@ data class Item(
      */
     val pos: Double? = null,
     val posVersion: Version? = null,
+    /** Diary entries: the day (ISO yyyy-MM-dd) and optional time (HH:mm). Null for list items. */
+    val date: String? = null,
+    val time: String? = null,
 ) {
     val position: Double get() = pos ?: createdAt.toDouble()
+    val localDate: LocalDate? get() = date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
+
+/** One recorded change: who did what, when. The log is shared and only ever grows. */
+@Serializable
+data class AuditEntry(
+    /** Derived from the item version, so the same edit always has the same id. */
+    val id: String,
+    val itemId: String,
+    val ts: Long,
+    /** Device id of whoever made the change. */
+    val by: String,
+    /** Their name at the time. */
+    val byName: String,
+    /** e.g. "ticked Milk", "added Dentist on Fri 9 Oct at 15:00". */
+    val description: String,
+)
+
+@Serializable
+enum class SpaceKind {
+    @SerialName("list") LIST,
+    @SerialName("diary") DIARY,
 }
 
 @Serializable
@@ -45,6 +72,9 @@ data class TodoList(
     val members: Map<String, String> = emptyMap(),
     /** Local only: this device created the list (rather than joining it). */
     val createdHere: Boolean = false,
+    val kind: SpaceKind = SpaceKind.LIST,
+    /** Every recorded change, by [AuditEntry.id]. Synced. */
+    val audit: Map<String, AuditEntry> = emptyMap(),
 ) {
     val visibleItems: List<Item>
         get() = items.values.filter { !it.deleted }.sortedWith(compareBy({ it.position }, { it.id }))
