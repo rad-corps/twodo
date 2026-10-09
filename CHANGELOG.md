@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.5 — 2026-10-09
+
 - Lists: "Add an item" is now at the bottom of the screen, like the calendar, and the list scrolls to
   show what you've just added.
 - **New list** is now at the bottom of the Lists tab.
