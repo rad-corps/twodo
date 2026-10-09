@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TwoDo"
+rootProject.name = "Intack"
 include(":app")

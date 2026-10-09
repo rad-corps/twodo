@@ -5,6 +5,14 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**TwoDo is now Intack.** New name, new home at [intack.app](https://intack.app), and getting ready for
+Google Play.
+- **Intack installs as a new app** next to TwoDo rather than updating it. Install Intack, re-join your
+  lists from another phone (Share › QR code or link), then uninstall TwoDo. Lists you share keep working
+  between the two while people switch over.
+- Share links now start with `https://intack.app/join/` and open Intack directly. Links shared before the
+  rename still work.
+
 ## v0.5.1 — 2026-10-09
 
 - Maintenance release to check the release pipeline from a new build machine. No changes to the app.

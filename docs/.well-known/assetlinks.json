@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.intack",
+      "sha256_cert_fingerprints": ["15:B6:93:C5:95:84:1A:E4:2E:77:5B:66:C5:50:D2:AA:93:75:A1:A5:45:DC:4B:36:9F:3F:53:41:49:A2:C0:7E"]
+    }
+  }
+]

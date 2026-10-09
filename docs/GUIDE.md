@@ -1,4 +1,4 @@
-# TwoDo — running and installing
+# Intack — running and installing
 
 All commands are PowerShell, run from `D:\dev\twodo`.
 
@@ -29,7 +29,7 @@ They're also listed in Android Studio under **Device Manager**, where you can st
 ### Build and install
 
 Emulators are x86_64, so use the **debug** build (the release build is ARM-only and won't install on them).
-The debug build installs as a separate app, **TwoDo (dev)** (`app.twodo.debug`), with its own lists:
+The debug build installs as a separate app, **Intack (dev)** (`app.intack.debug`), with its own lists:
 
 ```powershell
 .\gradlew assembleDebug
@@ -42,13 +42,13 @@ adb -s emulator-5556 install -r app\build\outputs\apk\debug\app-debug.apk
 Wipe the app's data on both (lists, name, settings):
 
 ```powershell
-adb -s emulator-5554 shell pm clear app.twodo.debug
-adb -s emulator-5556 shell pm clear app.twodo.debug
+adb -s emulator-5554 shell pm clear app.intack.debug
+adb -s emulator-5556 shell pm clear app.intack.debug
 ```
 
 ### Share a list between them
 
-1. Open **TwoDo (dev)** on both. Each asks for a name — use different ones (e.g. "Adam" and "Sam").
+1. Open **Intack (dev)** on both. Each asks for a name — use different ones (e.g. "Adam" and "Sam").
 2. **Phone A:** **New list** → name it → add a few items.
 3. **Phone A:** tap **Share** (top right) → **Send link** → **Copy text** (copy icon at the top of the share sheet).
    The emulators share the PC's clipboard, so the link is now on the PC and on phone B.
@@ -59,7 +59,7 @@ adb -s emulator-5556 shell pm clear app.twodo.debug
 If paste doesn't work, the link is still on the PC clipboard — open it on B directly:
 
 ```powershell
-adb -s emulator-5556 shell am start -a android.intent.action.VIEW -d "'$(Get-Clipboard)'" app.twodo.debug
+adb -s emulator-5556 shell am start -a android.intent.action.VIEW -d "'$(Get-Clipboard)'" app.intack.debug
 ```
 
 (Scanning the QR code isn't practical on emulators — their camera is a virtual room.)
@@ -114,7 +114,7 @@ Best for your own phone; updates are one command.
 4. `adb install -r app\build\outputs\apk\release\app-release.apk`
 
 If you ever get `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the phone has a release build signed with a different
-key. Uninstall first — `adb uninstall app.twodo` — which deletes that phone's lists. (Debug builds are a
+key. Uninstall first — `adb uninstall app.intack` — which deletes that phone's lists. (Debug builds are a
 separate app, so they never clash with the release one.)
 
 ### Method B — send the APK
@@ -147,7 +147,7 @@ To update later, send the new APK and repeat — it installs over the old one an
 2. Clone: `git clone https://github.com/rad-corps/twodo.git`
 3. Open the folder in Android Studio. It writes `local.properties` (the SDK location) itself — that file is
    per-machine and not committed.
-4. Run on a phone or emulator with the ▶ button. That's a debug build: it installs as **TwoDo (dev)** next
+4. Run on a phone or emulator with the ▶ button. That's a debug build: it installs as **Intack (dev)** next
    to the real app, signed with that computer's own debug key. **No release key is needed for day-to-day
    development.**
 
@@ -165,7 +165,7 @@ Releases must always be signed with the same key, or phones can't update. The ke
 
 To release from the laptop, copy that folder to the same place in your home folder there — nothing else
 changes. Copy it privately (USB stick, or a password manager attachment); anyone with both files can
-publish updates that phones will accept as TwoDo. Also keep a copy in a password manager or other backup:
+publish updates that phones will accept as Intack. Also keep a copy in a password manager or other backup:
 **if the key is lost, existing installs can never be updated** and everyone has to uninstall and reinstall.
 
 Then, on the laptop: `gh auth login` (once) and `./scripts/release.ps1 <version>` as usual. On macOS/Linux

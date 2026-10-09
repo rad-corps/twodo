@@ -7,15 +7,15 @@ plugins {
 }
 
 android {
-    namespace = "app.twodo"
+    namespace = "app.intack"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.twodo"
+        applicationId = "app.intack"
         minSdk = 26
         targetSdk = 36
-        versionCode = providers.gradleProperty("twodo.versionCode").get().toInt()
-        versionName = providers.gradleProperty("twodo.versionName").get()
+        versionCode = providers.gradleProperty("intack.versionCode").get().toInt()
+        versionName = providers.gradleProperty("intack.versionName").get()
     }
 
     // Release signing key lives outside the repo; see README. Without it, release builds are unsigned.
@@ -34,7 +34,7 @@ android {
     }
 
     buildTypes {
-        // Installs next to the released app ("TwoDo (dev)", own data), so any machine's debug key works.
+        // Installs next to the released app ("Intack (dev)", own data), so any machine's debug key works.
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-dev"
@@ -46,8 +46,8 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = releaseSigning
             // Every phone from the last several years is 64-bit ARM; skipping other ABIs cuts the APK size.
-            // -Ptwodo.allAbis keeps them all, e.g. to try a release build on an x86_64 emulator.
-            if (!providers.gradleProperty("twodo.allAbis").isPresent) ndk { abiFilters += "arm64-v8a" }
+            // -Pintack.allAbis keeps them all, e.g. to try a release build on an x86_64 emulator.
+            if (!providers.gradleProperty("intack.allAbis").isPresent) ndk { abiFilters += "arm64-v8a" }
         }
     }
 

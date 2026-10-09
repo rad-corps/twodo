@@ -1,0 +1,2 @@
+# GitHub Pages runs Jekyll, which skips dot-folders; Android fetches https://intack.app/.well-known/assetlinks.json.
+include: [".well-known"]
