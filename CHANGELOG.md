@@ -5,6 +5,12 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+- Lists: "Add an item" is now at the bottom of the screen, like the calendar, and the list scrolls to
+  show what you've just added.
+- **New list** is now at the bottom of the Lists tab.
+- The People tab is now **Group settings** (still with the group's people and invites), and Settings in
+  the group menu is now **App settings**.
+
 ## v0.6.4 — 2026-10-09
 
 - **Optional crash reports.** Turn on Settings › Offer to email crash reports, and if the app closes

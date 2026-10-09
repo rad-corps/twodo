@@ -88,7 +88,8 @@ import kotlinx.coroutines.launch
 enum class GroupTab(val label: String, val icon: ImageVector) {
     CALENDAR("Calendar", Icons.Outlined.CalendarMonth),
     LISTS("Lists", Icons.Outlined.Checklist),
-    PEOPLE("People", Icons.Outlined.Groups),
+    /** The group's people, inviting, and its look, name and leaving. */
+    SETTINGS("Group settings", Icons.Outlined.Settings),
 }
 
 /** Where to go from the group switcher on the title. */
@@ -160,7 +161,7 @@ internal fun GroupScreen(
                     EmptyState(if (group.isJoining) "The calendar will appear once you've joined." else "No calendar yet.")
                 }
                 GroupTab.LISTS -> ListsTab(app, group, lists, onOpenSpace)
-                GroupTab.PEOPLE -> PeopleTab(app, group, groupStatus, names, onInvite = { inviting = true }, onLeft = navigation.onOtherLists)
+                GroupTab.SETTINGS -> GroupSettingsTab(app, group, groupStatus, names, onInvite = { inviting = true }, onLeft = navigation.onOtherLists)
             }
         }
     }
@@ -232,7 +233,7 @@ internal fun GroupSwitcher(expanded: Boolean, currentId: String?, navigation: Gr
         HorizontalDivider()
         DropdownMenuItem(text = { Text("Start a new group") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { onDismiss(); navigation.onNewGroup() })
         DropdownMenuItem(text = { Text("Join with an invite") }, leadingIcon = { Icon(Icons.Default.PersonAdd, null) }, onClick = { onDismiss(); navigation.onJoin() })
-        DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { onDismiss(); navigation.onSettings() })
+        DropdownMenuItem(text = { Text("App settings") }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { onDismiss(); navigation.onSettings() })
     }
 }
 
@@ -242,42 +243,43 @@ private fun ListsTab(app: TwoDoApp, group: TodoList, lists: Map<String, TodoList
     var creating by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     val others = lists.values.filter { it.groupId == null && it.kind == SpaceKind.LIST }.sortedBy { it.name.lowercase() }
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(group.listRefs, key = { it.id }) { ref ->
-            val list = ref.spaceId?.let { lists[it] }
-            Card(
-                onClick = { list?.let { onOpenSpace(it.id) } },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.9f)),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Outlined.Checklist, null, tint = MaterialTheme.colorScheme.primary) }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(ref.text, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            list?.let { toDoSummary(it) } ?: "Getting it…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(group.listRefs, key = { it.id }) { ref ->
+                val list = ref.spaceId?.let { lists[it] }
+                Card(
+                    onClick = { list?.let { onOpenSpace(it.id) } },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.9f)),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Outlined.Checklist, null, tint = MaterialTheme.colorScheme.primary) }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(ref.text, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                list?.let { toDoSummary(it) } ?: "Getting it…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
                     }
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
                 }
             }
         }
-        item {
-            Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Button(onClick = { creating = true }, contentPadding = PaddingValues(horizontal = 24.dp, vertical = 14.dp)) {
-                    Icon(Icons.Default.Add, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("New list")
-                }
-                if (others.isNotEmpty()) {
-                    TextButton(onClick = { moving = true }) { Text("Move a list into ${group.name}") }
-                }
+        // At the bottom, within thumb reach, like the add bars in lists and the calendar.
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Button(onClick = { creating = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 14.dp)) {
+                Icon(Icons.Default.Add, null)
+                Spacer(Modifier.width(8.dp))
+                Text("New list")
+            }
+            if (others.isNotEmpty()) {
+                TextButton(onClick = { moving = true }) { Text("Move a list into ${group.name}") }
             }
         }
     }
@@ -331,7 +333,7 @@ private fun toDoSummary(list: TodoList): String {
 }
 
 @Composable
-private fun PeopleTab(
+private fun GroupSettingsTab(
     app: TwoDoApp,
     group: TodoList,
     status: SyncStatus,

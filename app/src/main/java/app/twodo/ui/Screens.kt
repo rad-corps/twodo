@@ -38,7 +38,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -524,7 +526,7 @@ internal fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snack
         topBar = { SpaceTopBar(app, list, status, onBack, onHistory = { showHistory = true }) },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        ListBody(app, list, status, Modifier.padding(padding))
+        ListBody(app, list, status, Modifier.padding(padding).consumeWindowInsets(padding))
     }
 }
 
@@ -536,39 +538,29 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
     val names by app.sync.names.collectAsStateWithLifecycle()
     val highlighted = rememberRemoteHighlights(app, list.id)
 
+    // Set when this phone adds an item, so the list scrolls to it once it appears.
+    var scrollToNew by remember { mutableStateOf(false) }
+
     fun add() {
         val text = newText
         newText = ""
+        scrollToNew = true
         scope.launch { app.repo.addItem(list.id, text) }
     }
 
     Column(modifier.fillMaxSize()) {
         JoiningBanner(list, status)
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = newText,
-                onValueChange = { newText = it },
-                placeholder = { Text("Add an item") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { add() }),
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = ::add, enabled = newText.isNotBlank()) { Icon(Icons.Default.Add, "Add") }
-        }
         // Local copy so dragging is smooth; committed to the repository when the drag ends.
         var ordered by remember(list.visibleItems) { mutableStateOf(list.visibleItems) }
         val listState = rememberLazyListState()
         val reorderState = rememberReorderableLazyListState(listState) { from, to ->
             ordered = ordered.toMutableList().apply { add(to.index, removeAt(from.index)) }
         }
-        LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
+        LaunchedEffect(ordered.size) {
+            if (scrollToNew && ordered.isNotEmpty()) listState.animateScrollToItem(ordered.size - 1)
+            scrollToNew = false
+        }
+        LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(bottom = 8.dp)) {
             items(ordered, key = { it.id }) { item ->
                 ReorderableItem(reorderState, key = item.id) {
                     val background by animateColorAsState(
@@ -621,6 +613,25 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
                     }
                 }
             }
+        }
+        // At the bottom, within thumb reach, and lifted above the keyboard while typing.
+        Row(Modifier.fillMaxWidth().imePadding().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = newText,
+                onValueChange = { newText = it },
+                placeholder = { Text("Add an item") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = ::add, enabled = newText.isNotBlank()) { Icon(Icons.Default.Add, "Add") }
         }
     }
 
