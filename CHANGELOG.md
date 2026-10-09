@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+- Maintenance release to check the release pipeline from a new build machine. No changes to the app.
+
 ## v0.5.0 — 2026-10-09
 
 **Themes.** Pick a colour theme for the app (Settings › Theme) and give any list or diary its own
