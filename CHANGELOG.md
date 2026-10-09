@@ -5,6 +5,9 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+- The calendar's "Add to …" box is now at the bottom of the screen, below the day's entries, and
+  moves up above the keyboard while you type.
+
 ## v0.6.1 — 2026-10-09
 
 - Fix: saving a group's background photo didn't take effect for most photos (and could clear the

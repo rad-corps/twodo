@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -109,7 +111,7 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
         topBar = { SpaceTopBar(app, list, status, onBack, onHistory = { showHistory = true }) },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        DiaryBody(app, list, status, Modifier.padding(padding))
+        DiaryBody(app, list, status, Modifier.padding(padding).consumeWindowInsets(padding))
     }
 }
 
@@ -161,7 +163,6 @@ internal fun DiaryBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifi
             onToday = { goTo(LocalDate.now()) },
         )
         WeekStrip(pager, daysWithEntries, onPick = ::goTo)
-        AddEntryBar(pager) { day, text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
         HorizontalPager(
             state = pager,
             modifier = Modifier.weight(1f),
@@ -171,6 +172,8 @@ internal fun DiaryBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifi
             val date = dateOf(page)
             DayPage(date, byDay[date.toString()].orEmpty(), highlighted, app.identity.deviceId, names) { editing = it }
         }
+        // At the bottom, within thumb reach, and lifted above the keyboard while typing.
+        AddEntryBar(pager, Modifier.imePadding()) { day, text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
     }
 
     if (picking) DayPickerDialog(currentDay(), onDismiss = { picking = false }) { picking = false; goTo(it) }
@@ -284,7 +287,7 @@ private fun relativeDay(day: LocalDate, today: LocalDate): String {
 }
 
 @Composable
-private fun AddEntryBar(pager: PagerState, onAdd: (LocalDate, String, String?) -> Unit) {
+private fun AddEntryBar(pager: PagerState, modifier: Modifier = Modifier, onAdd: (LocalDate, String, String?) -> Unit) {
     val day = dateOf(pager.currentPage)
     var text by rememberSaveable { mutableStateOf("") }
     var time by rememberSaveable { mutableStateOf<String?>(null) }
@@ -298,7 +301,7 @@ private fun AddEntryBar(pager: PagerState, onAdd: (LocalDate, String, String?) -
         time = null
     }
 
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
