@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.4 — 2026-10-09
+
 - **Optional crash reports.** Turn on Settings › Offer to email crash reports, and if the app closes
   unexpectedly it offers to email a report to the developer. It opens in your email app so you see what's
   sent (versions and where the error happened — nothing from your lists) and only goes if you send it.
