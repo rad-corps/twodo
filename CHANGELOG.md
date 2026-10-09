@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.6 — 2026-10-09
+
 **Simpler calendar entries.** Adding or changing something on the calendar now uses one panel that slides
 up from the bottom, wherever you start from:
 - What's happening, then the day — **Today**, **Tomorrow** or **Pick a day…**
