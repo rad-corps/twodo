@@ -5,6 +5,13 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Simpler calendar entries.** Adding or changing something on the calendar now uses one panel that slides
+up from the bottom, wherever you start from:
+- What's happening, then the day — **Today**, **Tomorrow** or **Pick a day…**
+- **All day** or **At a time**, with big up and down buttons for the hour, minutes (in 15-minute steps)
+  and AM/PM. Tap the time to type an exact one.
+- One big **Add** / **Save** button; when changing an entry, **Delete** and its history are there too.
+
 ## v0.6.5 — 2026-10-09
 
 - Lists: "Add an item" is now at the bottom of the screen, like the calendar, and the list scrolls to

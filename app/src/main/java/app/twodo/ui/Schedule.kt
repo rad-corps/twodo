@@ -150,7 +150,7 @@ internal fun ScheduleView(app: TwoDoApp, sources: List<ScheduleSource>, modifier
     editing?.let { (listId, itemId) ->
         val source = sources.firstOrNull { it.list.id == listId } ?: return@let
         val entry = source.list.items[itemId]?.takeIf { !it.deleted } ?: return@let
-        EntryDialog(
+        EditEntrySheet(
             entry = entry,
             list = source.list,
             myDeviceId = app.identity.deviceId,
@@ -167,7 +167,7 @@ internal fun ScheduleView(app: TwoDoApp, sources: List<ScheduleSource>, modifier
         )
     }
     if (adding) {
-        NewEntryDialog(sources, onDismiss = { adding = false }) { source, text, date, time ->
+        NewEntrySheet(sources, onDismiss = { adding = false }) { source, text, date, time ->
             adding = false
             scope.launch { app.repo.addEntry(source.list.id, date, text, time) }
         }
@@ -194,58 +194,18 @@ private fun DayHeading(date: LocalDate, today: LocalDate, onClick: ((LocalDate) 
     )
 }
 
-/** Add an entry on any day; with several calendars, also choose which one. */
+/** Add an entry on any day — in the entry sheet; with several calendars, it also asks which one. */
 @Composable
-private fun NewEntryDialog(
+private fun NewEntrySheet(
     sources: List<ScheduleSource>,
     onDismiss: () -> Unit,
     onAdd: (ScheduleSource, String, LocalDate, String?) -> Unit,
 ) {
-    val context = LocalContext.current
-    var text by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(LocalDate.now()) }
-    var time by remember { mutableStateOf<String?>(null) }
-    var source by remember { mutableStateOf(sources.first()) }
-    var pickingDate by remember { mutableStateOf(false) }
-    var pickingTime by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add to the calendar") },
-        text = {
-            Column {
-                OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("What's on?") }, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(onClick = { pickingDate = true }, label = { Text(formatDay(date)) })
-                    AssistChip(
-                        onClick = { pickingTime = true },
-                        label = { Text(time?.let { displayTime(DateFormat.is24HourFormat(context), it) } ?: "Add time") },
-                        trailingIcon = time?.let { { Icon(Icons.Default.Close, "Remove time", Modifier.size(16.dp).clickable { time = null }) } },
-                    )
-                }
-                if (sources.size > 1) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Calendar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    sources.forEach { option ->
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { source = option }.padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(Modifier.size(14.dp).clip(CircleShape).background(option.color))
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                option.label,
-                                Modifier.weight(1f),
-                                fontWeight = if (option == source) FontWeight.SemiBold else FontWeight.Normal,
-                            )
-                            if (option == source) Text("✓", color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onAdd(source, text, date, time) }, enabled = text.isNotBlank()) { Text("Add") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    EntrySheet(
+        initial = EntryDraft("", LocalDate.now(), null),
+        editing = false,
+        onDismiss = onDismiss,
+        onSave = { draft, calendar -> onAdd(sources[calendar], draft.text, draft.date, draft.time) },
+        calendars = sources.map { it.label to it.color },
     )
-    if (pickingDate) DayPickerDialog(date, onDismiss = { pickingDate = false }) { date = it; pickingDate = false }
-    if (pickingTime) TimeDialog(time, onDismiss = { pickingTime = false }, onClear = null) { time = it; pickingTime = false }
 }

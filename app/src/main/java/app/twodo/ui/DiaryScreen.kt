@@ -179,14 +179,17 @@ internal fun DiaryBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifi
             DayPage(date, byDay[date.toString()].orEmpty(), highlighted, app.identity.deviceId, names) { editing = it }
         }
         // At the bottom, within thumb reach, and lifted above the keyboard while typing.
-        AddEntryBar(pager, Modifier.imePadding()) { day, text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
+        AddEntryBar(pager) { day, text, time ->
+            scope.launch { app.repo.addEntry(list.id, day, text, time) }
+            if (day != currentDay()) goTo(day)
+        }
     }
 
     if (picking) DayPickerDialog(currentDay(), onDismiss = { picking = false }) { picking = false; goTo(it) }
     editing?.let { entry ->
         // Show the latest version if it changed while the dialog was open.
         val current = list.items[entry.id]?.takeIf { !it.deleted } ?: return@let
-        EntryDialog(
+        EditEntrySheet(
             entry = current,
             list = list,
             myDeviceId = app.identity.deviceId,
@@ -292,50 +295,37 @@ private fun relativeDay(day: LocalDate, today: LocalDate): String {
     }
 }
 
+/** "Add to Friday…" at the bottom of Day view; opens the entry sheet on the day being shown. */
 @Composable
 private fun AddEntryBar(pager: PagerState, modifier: Modifier = Modifier, onAdd: (LocalDate, String, String?) -> Unit) {
     val day = dateOf(pager.currentPage)
-    var text by rememberSaveable { mutableStateOf("") }
-    var time by rememberSaveable { mutableStateOf<String?>(null) }
-    var pickingTime by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    fun add() {
-        if (text.isBlank()) return
-        onAdd(day, text, time)
-        text = ""
-        time = null
-    }
-
-    Row(modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            placeholder = { Text("Add to ${dayLabel(day).let { if (it == formatDay(day)) it else it.lowercase() }}") },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
-            trailingIcon = {
-                TextButton(onClick = { pickingTime = true }) {
-                    Text(time?.let { displayTime(DateFormat.is24HourFormat(context), it) } ?: "Time")
-                }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { add() }),
-            modifier = Modifier.weight(1f),
+    var adding by remember { mutableStateOf(false) }
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable { adding = true }
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(12.dp))
+        Text(
+            "Add to ${dayLabel(day).let { if (it == formatDay(day)) it else it.lowercase() }}…",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        IconButton(onClick = ::add, enabled = text.isNotBlank()) { Icon(Icons.Default.Add, "Add") }
     }
-    if (pickingTime) {
-        TimeDialog(
-            initial = time,
-            onDismiss = { pickingTime = false },
-            onClear = if (time != null) ({ time = null; pickingTime = false }) else null,
-        ) { time = it; pickingTime = false }
+    if (adding) {
+        EntrySheet(
+            initial = EntryDraft("", day, null),
+            editing = false,
+            onDismiss = { adding = false },
+            onSave = { draft, _ ->
+                adding = false
+                onAdd(draft.date, draft.text, draft.time)
+            },
+        )
     }
 }
 
@@ -392,9 +382,9 @@ private fun DayPage(
     }
 }
 
-/** Edit an entry's text, day and time, delete it, or see its change history. */
+/** Edit an entry's text, day and time, delete it, or see its change history — in the entry sheet. */
 @Composable
-internal fun EntryDialog(
+internal fun EditEntrySheet(
     entry: Item,
     list: TodoList,
     myDeviceId: String,
@@ -403,60 +393,18 @@ internal fun EntryDialog(
     onSave: (String, LocalDate, String?) -> Unit,
     onDelete: () -> Unit,
 ) {
-    val context = LocalContext.current
-    var text by remember(entry.id) { mutableStateOf(entry.text) }
-    var date by remember(entry.id) { mutableStateOf(entry.localDate ?: LocalDate.now()) }
-    var time by remember(entry.id) { mutableStateOf(entry.time) }
-    var pickingDate by remember { mutableStateOf(false) }
-    var pickingTime by remember { mutableStateOf(false) }
     val history = remember(list.audit, entry.id) {
         list.audit.values.filter { it.itemId == entry.id }.sortedByDescending { it.ts }
     }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit entry") },
-        text = {
-            Column {
-                OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(onClick = { pickingDate = true }, label = { Text(formatDay(date)) })
-                    AssistChip(
-                        onClick = { pickingTime = true },
-                        label = { Text(time?.let { displayTime(DateFormat.is24HourFormat(context), it) } ?: "Add time") },
-                        trailingIcon = time?.let {
-                            {
-                                Icon(
-                                    Icons.Default.Close, "Remove time",
-                                    Modifier.size(16.dp).clickable { time = null },
-                                )
-                            }
-                        },
-                    )
-                }
-                if (history.isNotEmpty()) {
-                    HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    Text("History", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    LazyColumn(Modifier.heightIn(max = 180.dp)) {
-                        items(history, key = { it.id }) { AuditRow(it, myDeviceId, names, showDate = true, compact = true) }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(text, date, time) }, enabled = text.isNotBlank()) { Text("Save") }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
-        },
+    EntrySheet(
+        initial = EntryDraft(entry.text, entry.localDate ?: LocalDate.now(), entry.time),
+        editing = true,
+        onDismiss = onDismiss,
+        onSave = { draft, _ -> onSave(draft.text, draft.date, draft.time) },
+        onDelete = onDelete,
+        history = history,
+        historyRow = { AuditRow(it, myDeviceId, names, showDate = true, compact = true) },
     )
-    if (pickingDate) DayPickerDialog(date, onDismiss = { pickingDate = false }) { date = it; pickingDate = false }
-    if (pickingTime) {
-        TimeDialog(time, onDismiss = { pickingTime = false }, onClear = null) { time = it; pickingTime = false }
-    }
 }
 
 /** Calendar picker; its pencil toggle switches to typing the date in. */
