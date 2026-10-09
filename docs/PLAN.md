@@ -63,6 +63,20 @@ online. So every list also uses **free public Nostr relays** (`RELAYS` in `Relay
   A peer that can't decrypt is dropped.
 - Anyone holding the QR code can read and edit the list — same model as a shared link.
 
+### Groups
+
+A group (kind `group`) is a shared space like any list, and syncs the same way. Its items describe
+what's in it, so joining the group is enough to get everything:
+
+- **Space entries** carry a space's id, secret and kind (`spaceId`, `spaceSecret`, `spaceKind`), with
+  its name as the text. Each phone joins every space its group lists, and removes spaces whose entry
+  was deleted (`planGroup` in `Groups.kt`). A group's calendar is its oldest diary; more lists can be added.
+- **`group-name`** holds the group's name, so renaming reaches everyone.
+- **`group-look`** holds the shared look as JSON (theme, accent, photo strength, photo id). The photo is
+  a ~960 px JPEG sent as base64 pieces (`photo:<id>:<n>`, 16 K characters each, one relay event apiece)
+  and reassembled into a file once all pieces have arrived.
+- People joining and leaving are announced once, for the group, not for each of its spaces.
+
 ### Data model and conflict resolution
 
 Each item is replaced as a whole on every edit:

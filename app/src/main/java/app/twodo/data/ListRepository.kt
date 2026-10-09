@@ -91,12 +91,21 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         return list
     }
 
-    /** Starts a group with its calendar and a shopping list, ready to invite people to. */
-    suspend fun createGroup(name: String): TodoList = mutex.withLock {
+    /**
+     * Starts a group, ready to invite people to. Its calendar is the diary [calendarId] if given (someone
+     * who already has one), otherwise a new one; [listIds] are existing lists to bring in. With none, it
+     * starts with a shopping list.
+     */
+    suspend fun createGroup(name: String, calendarId: String? = null, listIds: List<String> = emptyList()): TodoList = mutex.withLock {
         val group = newSpace(name, SpaceKind.GROUP)
         putGroupItem(group.id, nameItem(group.name))
-        putGroupItem(group.id, spaceItem(newSpace("Calendar", SpaceKind.DIARY, group.id)))
-        putGroupItem(group.id, spaceItem(newSpace("Shopping", SpaceKind.LIST, group.id)))
+        val existing = (listOfNotNull(calendarId) + listIds).mapNotNull { _lists.value[it] }.filter { it.kind != SpaceKind.GROUP && it.groupId == null }
+        if (existing.none { it.kind == SpaceKind.DIARY }) putGroupItem(group.id, spaceItem(newSpace("Calendar", SpaceKind.DIARY, group.id)))
+        existing.forEach { list ->
+            save(list.copy(groupId = group.id))
+            putGroupItem(group.id, spaceItem(list))
+        }
+        if (existing.none { it.kind == SpaceKind.LIST }) putGroupItem(group.id, spaceItem(newSpace("Shopping", SpaceKind.LIST, group.id)))
         _lists.value.getValue(group.id)
     }
 

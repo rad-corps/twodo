@@ -5,6 +5,25 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Groups.** Share one calendar and your lists with the same people — your household, say — by
+inviting them once. A group has three tabs: **Calendar**, **Lists** and **People**.
+- Starting a group gives it a calendar and a shopping list; add more lists any time. Everyone in the
+  group has the same calendar, so nobody ends up with two.
+- **Invite** someone once and they get the calendar and every list, including ones added later.
+- Already have lists? When you start a group you can use your diary as its calendar and bring your
+  lists along. Lists outside groups are still there under **Other lists**.
+
+**Make it yours.** Give a group a **background photo** — its colours can be taken from the photo — or
+pick colours and a highlight colour. Everyone in the group sees the same look.
+
+**Schedule view.** Calendars can show everything coming up on one page (Calendar › Schedule). In more
+than one group? **All calendars** puts them together.
+
+Also:
+- **Text size** setting (Normal, Large, Larger).
+- Simpler wording: "In sync with Sarah" instead of connection details.
+- A welcome screen for new users.
+
 ## v0.5.1 — 2026-10-09
 
 - Maintenance release to check the release pipeline from a new build machine. No changes to the app.

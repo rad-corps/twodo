@@ -43,6 +43,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -69,6 +71,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -257,15 +260,9 @@ fun TwoDoRoot(
         }
     }
     if (newGroup) {
-        TextPromptDialog(
-            title = "Start a new group",
-            label = "Group name",
-            confirm = "Start",
-            supporting = "It comes with a calendar and a shopping list. Invite people once it's made.",
-            onDismiss = { newGroup = false },
-        ) { name ->
+        NewGroupDialog(others, onDismiss = { newGroup = false }) { name, calendarId, listIds ->
             newGroup = false
-            scope.launch { show(app.repo.createGroup(name).id) }
+            scope.launch { show(app.repo.createGroup(name, calendarId, listIds).id) }
         }
     }
     if (joining) {
@@ -401,6 +398,69 @@ private fun AllCalendarsScreen(app: TwoDoApp, calendars: List<Pair<TodoList, Tod
             )
         },
     ) { padding -> ScheduleView(app, sources, Modifier.padding(padding)) }
+}
+
+/**
+ * Name the new group; someone who already has a diary and lists can make them the group's calendar and
+ * lists rather than starting over.
+ */
+@Composable
+private fun NewGroupDialog(others: List<TodoList>, onDismiss: () -> Unit, onCreate: (String, String?, List<String>) -> Unit) {
+    val diaries = others.filter { it.kind == SpaceKind.DIARY }
+    val existingLists = others.filter { it.kind == SpaceKind.LIST }
+    var name by remember { mutableStateOf("Family") }
+    var calendarId by remember { mutableStateOf(diaries.firstOrNull()?.id) }
+    var listIds by remember { mutableStateOf(emptySet<String>()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Start a new group") },
+        text = {
+            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Group name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (diaries.isEmpty() && existingLists.isEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("It comes with a calendar and a shopping list. Invite people once it's made.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (diaries.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    SectionTitle("Calendar")
+                    (diaries.map { it.id to "Use “${it.name}”" } + (null to "Start a new one")).forEach { (id, label) ->
+                        ChoiceRow(label, calendarId == id, radio = true) { calendarId = id }
+                    }
+                }
+                if (existingLists.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    SectionTitle("Bring these lists")
+                    existingLists.forEach { list ->
+                        ChoiceRow(list.name, list.id in listIds, radio = false) {
+                            listIds = if (list.id in listIds) listIds - list.id else listIds + list.id
+                        }
+                    }
+                }
+                if (diaries.isNotEmpty() || existingLists.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Everyone you invite gets them. People you already share them with keep them too.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onCreate(name, calendarId, listIds.toList()) }, enabled = name.isNotBlank()) { Text("Start") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ChoiceRow(label: String, selected: Boolean, radio: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (radio) RadioButton(selected = selected, onClick = onClick) else Checkbox(checked = selected, onCheckedChange = { onClick() })
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+    }
 }
 
 /** For people from before groups: what groups are, and a button to start one. */
