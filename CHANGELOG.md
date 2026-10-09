@@ -5,6 +5,9 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+- Fix: saving a group's background photo didn't take effect for most photos (and could clear the
+  previous one). Group changes now always finish, even when the screen closes straight away.
+
 ## v0.6.0 — 2026-10-09
 
 **Groups.** Share one calendar and your lists with the same people — your household, say — by

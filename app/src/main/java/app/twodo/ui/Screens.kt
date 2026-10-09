@@ -658,7 +658,7 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
     if (renaming) {
         TextPromptDialog(title = "Rename", label = "Name", confirm = "Save", initial = list.name, onDismiss = { renaming = false }) { name ->
             renaming = false
-            scope.launch { app.repo.rename(list.id, name) }
+            app.save { app.repo.rename(list.id, name) }
         }
     }
     if (confirmRemove && inGroup) {
@@ -670,7 +670,7 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
                 TextButton(onClick = {
                     confirmRemove = false
                     onBack()
-                    scope.launch { app.repo.deleteFromGroup(list.id) }
+                    app.save { app.repo.deleteFromGroup(list.id) }
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },

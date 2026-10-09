@@ -34,6 +34,14 @@ class TwoDoApp : Application() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /**
+     * Runs a change that must finish even if the screen that asked for it closes (e.g. saving from a
+     * dialog that dismisses itself). A screen's own coroutine scope is cancelled when it goes.
+     */
+    fun save(block: suspend () -> Unit) {
+        scope.launch { block() }
+    }
+
     override fun onCreate() {
         super.onCreate()
         identity = Identity(this)

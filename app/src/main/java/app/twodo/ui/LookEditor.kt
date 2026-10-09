@@ -186,7 +186,7 @@ internal fun LookEditorDialog(app: TwoDoApp, group: TodoList, onDismiss: () -> U
                 val photoBytes = newPhoto
                 val remove = removePhoto
                 onDismiss()
-                scope.launch { app.repo.setGroupLook(group.id, candidate, photoBytes, remove) }
+                app.save { app.repo.setGroupLook(group.id, candidate, photoBytes, remove) }
             }, enabled = !loading) { Text("Save for everyone") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

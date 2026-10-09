@@ -28,6 +28,7 @@ import app.twodo.model.syncedGroupName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -96,7 +97,9 @@ class ListRepository(private val dir: File, private val identity: Identity) {
      * who already has one), otherwise a new one; [listIds] are existing lists to bring in. With none, it
      * starts with a shopping list.
      */
-    suspend fun createGroup(name: String, calendarId: String? = null, listIds: List<String> = emptyList()): TodoList = mutex.withLock {
+    suspend fun createGroup(name: String, calendarId: String? = null, listIds: List<String> = emptyList()): TodoList = withContext(NonCancellable) { createGroupLocked(name, calendarId, listIds) }
+
+    private suspend fun createGroupLocked(name: String, calendarId: String?, listIds: List<String>): TodoList = mutex.withLock {
         val group = newSpace(name, SpaceKind.GROUP)
         putGroupItem(group.id, nameItem(group.name))
         val existing = (listOfNotNull(calendarId) + listIds).mapNotNull { _lists.value[it] }.filter { it.kind != SpaceKind.GROUP && it.groupId == null }
@@ -110,7 +113,9 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     }
 
     /** Adds a new list to the group, for everyone in it. */
-    suspend fun addToGroup(groupId: String, name: String, kind: SpaceKind = SpaceKind.LIST): TodoList? = mutex.withLock {
+    suspend fun addToGroup(groupId: String, name: String, kind: SpaceKind = SpaceKind.LIST): TodoList? = withContext(NonCancellable) { addToGroupLocked(groupId, name, kind) }
+
+    private suspend fun addToGroupLocked(groupId: String, name: String, kind: SpaceKind): TodoList? = mutex.withLock {
         if (_lists.value[groupId]?.kind != SpaceKind.GROUP) return null
         val space = newSpace(name, kind, groupId)
         putGroupItem(groupId, spaceItem(space))
@@ -118,7 +123,9 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     }
 
     /** Moves an existing list or diary into the group; everyone in the group gets it. */
-    suspend fun moveIntoGroup(groupId: String, listId: String): Unit = mutex.withLock {
+    suspend fun moveIntoGroup(groupId: String, listId: String): Unit = withContext(NonCancellable) { moveIntoGroupLocked(groupId, listId) }
+
+    private suspend fun moveIntoGroupLocked(groupId: String, listId: String): Unit = mutex.withLock {
         if (_lists.value[groupId]?.kind != SpaceKind.GROUP) return
         val list = _lists.value[listId] ?: return
         save(list.copy(groupId = groupId))
@@ -126,7 +133,9 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     }
 
     /** Takes a space out of its group for everyone in it, and removes it from this phone. */
-    suspend fun deleteFromGroup(listId: String): Unit = mutex.withLock {
+    suspend fun deleteFromGroup(listId: String): Unit = withContext(NonCancellable) { deleteFromGroupLocked(listId) }
+
+    private suspend fun deleteFromGroupLocked(listId: String): Unit = mutex.withLock {
         val list = _lists.value[listId] ?: return
         val groupId = list.groupId ?: return
         val ref = _lists.value[groupId]?.items?.values?.firstOrNull { it.spaceId == listId && !it.deleted }
@@ -136,7 +145,9 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     }
 
     /** Renames a space; in a group the new name reaches everyone. */
-    suspend fun rename(listId: String, name: String): Unit = mutex.withLock {
+    suspend fun rename(listId: String, name: String): Unit = withContext(NonCancellable) { renameLocked(listId, name) }
+
+    private suspend fun renameLocked(listId: String, name: String): Unit = mutex.withLock {
         val trimmed = name.trim().ifEmpty { return }
         val list = _lists.value[listId] ?: return
         if (list.name == trimmed) return
@@ -158,7 +169,9 @@ class ListRepository(private val dir: File, private val identity: Identity) {
      * Sets the group's look for everyone in it. [photoJpeg] replaces the photo; with [removePhoto] the
      * photo goes; otherwise the current one stays.
      */
-    suspend fun setGroupLook(groupId: String, look: Look, photoJpeg: ByteArray? = null, removePhoto: Boolean = false): Unit = mutex.withLock {
+    suspend fun setGroupLook(groupId: String, look: Look, photoJpeg: ByteArray? = null, removePhoto: Boolean = false): Unit = withContext(NonCancellable) { setGroupLookLocked(groupId, look, photoJpeg, removePhoto) }
+
+    private suspend fun setGroupLookLocked(groupId: String, look: Look, photoJpeg: ByteArray?, removePhoto: Boolean): Unit = mutex.withLock {
         val group = _lists.value[groupId]?.takeIf { it.kind == SpaceKind.GROUP } ?: return
         val now = System.currentTimeMillis()
         val old = group.sharedLook
