@@ -46,6 +46,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -101,9 +104,20 @@ private val entryOrder = compareBy<Item>({ it.time ?: "" }, { it.createdAt }, { 
 internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackbar: SnackbarHostState, onBack: () -> Unit) {
     var showHistory by rememberSaveable(list.id) { mutableStateOf(false) }
     val names by app.sync.names.collectAsStateWithLifecycle()
-    val highlighted = rememberRemoteHighlights(app, list.id)
     if (showHistory) return HistoryScreen(list, app.identity.deviceId, names, onBack = { showHistory = false })
+    Scaffold(
+        topBar = { SpaceTopBar(app, list, status, onBack, onHistory = { showHistory = true }) },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        DiaryBody(app, list, status, Modifier.padding(padding))
+    }
+}
 
+/** The calendar itself — day header, week strip, add bar and swipeable days — for a screen or a group tab. */
+@Composable
+internal fun DiaryBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifier: Modifier = Modifier) {
+    val names by app.sync.names.collectAsStateWithLifecycle()
+    val highlighted = rememberRemoteHighlights(app, list.id)
     val scope = rememberCoroutineScope()
     val pager = rememberPagerState(initialPage = pageOf(LocalDate.now())) { PAGE_COUNT }
     // Grouped once per change to the diary, so showing any day is a map lookup.
@@ -126,30 +140,36 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
         }
     }
 
-    Scaffold(
-        topBar = { SpaceTopBar(app, list, status, onBack, onHistory = { showHistory = true }) },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            JoiningBanner(list, status)
-            DayHeader(
-                pager = pager,
-                onPrevious = { goTo(currentDay().minusDays(1)) },
-                onNext = { goTo(currentDay().plusDays(1)) },
-                onPick = { picking = true },
-                onToday = { goTo(LocalDate.now()) },
-            )
-            WeekStrip(pager, daysWithEntries, onPick = ::goTo)
-            AddEntryBar(pager) { day, text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
-            HorizontalPager(
-                state = pager,
-                modifier = Modifier.weight(1f),
-                beyondViewportPageCount = 1,
-                key = { it },
-            ) { page ->
-                val date = dateOf(page)
-                DayPage(date, byDay[date.toString()].orEmpty(), highlighted, app.identity.deviceId, names) { editing = it }
-            }
+    var schedule by rememberSaveable { mutableStateOf(app.identity.scheduleView) }
+
+    Column(modifier.fillMaxSize()) {
+        JoiningBanner(list, status)
+        CalendarModeSwitch(schedule) {
+            schedule = it
+            app.identity.scheduleView = it
+        }
+        if (schedule) {
+            val label = list.name
+            ScheduleView(app, listOf(ScheduleSource(list, label, MaterialTheme.colorScheme.primary)), Modifier.weight(1f))
+            return@Column
+        }
+        DayHeader(
+            pager = pager,
+            onPrevious = { goTo(currentDay().minusDays(1)) },
+            onNext = { goTo(currentDay().plusDays(1)) },
+            onPick = { picking = true },
+            onToday = { goTo(LocalDate.now()) },
+        )
+        WeekStrip(pager, daysWithEntries, onPick = ::goTo)
+        AddEntryBar(pager) { day, text, time -> scope.launch { app.repo.addEntry(list.id, day, text, time) } }
+        HorizontalPager(
+            state = pager,
+            modifier = Modifier.weight(1f),
+            beyondViewportPageCount = 1,
+            key = { it },
+        ) { page ->
+            val date = dateOf(page)
+            DayPage(date, byDay[date.toString()].orEmpty(), highlighted, app.identity.deviceId, names) { editing = it }
         }
     }
 
@@ -173,6 +193,15 @@ internal fun DiaryScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snac
                 scope.launch { app.repo.deleteItem(list.id, current.id) }
             },
         )
+    }
+}
+
+/** Day (one day at a time, swipe between days) or Schedule (everything coming up on one page). */
+@Composable
+private fun CalendarModeSwitch(schedule: Boolean, onChange: (Boolean) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SegmentedButton(selected = !schedule, onClick = { onChange(false) }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("Day") }
+        SegmentedButton(selected = schedule, onClick = { onChange(true) }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text("Schedule") }
     }
 }
 
@@ -356,7 +385,7 @@ private fun DayPage(
 
 /** Edit an entry's text, day and time, delete it, or see its change history. */
 @Composable
-private fun EntryDialog(
+internal fun EntryDialog(
     entry: Item,
     list: TodoList,
     myDeviceId: String,
@@ -423,7 +452,7 @@ private fun EntryDialog(
 
 /** Calendar picker; its pencil toggle switches to typing the date in. */
 @Composable
-private fun DayPickerDialog(initial: LocalDate, onDismiss: () -> Unit, onPick: (LocalDate) -> Unit) {
+internal fun DayPickerDialog(initial: LocalDate, onDismiss: () -> Unit, onPick: (LocalDate) -> Unit) {
     val state = rememberDatePickerState(initialSelectedDateMillis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())
     DatePickerDialog(
         onDismissRequest = onDismiss,
@@ -443,7 +472,7 @@ private fun DayPickerDialog(initial: LocalDate, onDismiss: () -> Unit, onPick: (
 
 /** Type a time in; [onClear] (if given) offers "No time". */
 @Composable
-private fun TimeDialog(initial: String?, onDismiss: () -> Unit, onClear: (() -> Unit)?, onPick: (String) -> Unit) {
+internal fun TimeDialog(initial: String?, onDismiss: () -> Unit, onClear: (() -> Unit)?, onPick: (String) -> Unit) {
     val context = LocalContext.current
     val start = initial?.let { runCatching { LocalTime.parse(it) }.getOrNull() } ?: LocalTime.now().withMinute(0)
     val state = rememberTimePickerState(start.hour, start.minute, is24Hour = DateFormat.is24HourFormat(context))
@@ -464,6 +493,6 @@ private fun TimeDialog(initial: String?, onDismiss: () -> Unit, onClear: (() -> 
 private val twelveHour = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
 
 /** "15:00" stored; shown as "15:00" or "3:00 PM" depending on the phone's setting. */
-private fun displayTime(is24Hour: Boolean, time: String): String =
+internal fun displayTime(is24Hour: Boolean, time: String): String =
     if (is24Hour) time
     else runCatching { LocalTime.parse(time).format(twelveHour) }.getOrDefault(time)

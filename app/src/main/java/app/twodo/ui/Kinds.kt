@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,13 +24,17 @@ val SpaceKind.icon: ImageVector
     get() = when (this) {
         SpaceKind.LIST -> Icons.Outlined.Checklist
         SpaceKind.DIARY -> Icons.Outlined.CalendarMonth
+        SpaceKind.GROUP -> Icons.Outlined.Groups
     }
 
-val SpaceKind.label: String
-    get() = when (this) {
-        SpaceKind.LIST -> "List"
-        SpaceKind.DIARY -> "Diary"
-    }
+val SpaceKind.label: String get() = label(inGroup = false)
+
+/** In a group, the diary is simply its calendar. */
+fun SpaceKind.label(inGroup: Boolean): String = when (this) {
+    SpaceKind.LIST -> "List"
+    SpaceKind.DIARY -> if (inGroup) "Calendar" else "Diary"
+    SpaceKind.GROUP -> "Group"
+}
 
 /** The list's own theme, or [appTheme] if it follows the app. */
 fun TodoList.theme(appTheme: AppTheme): AppTheme = themeId?.let(::themeById) ?: appTheme

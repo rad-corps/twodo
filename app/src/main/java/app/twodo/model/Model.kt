@@ -33,6 +33,13 @@ data class Item(
     /** Diary entries: the day (ISO yyyy-MM-dd) and optional time (HH:mm). Null for list items. */
     val date: String? = null,
     val time: String? = null,
+    /**
+     * Group entries: the space this entry stands for (its id, secret and kind). Joining the group joins
+     * every space it lists. Null for list items and diary entries.
+     */
+    val spaceId: String? = null,
+    val spaceSecret: String? = null,
+    val spaceKind: SpaceKind? = null,
 ) {
     val position: Double get() = pos ?: createdAt.toDouble()
     val localDate: LocalDate? get() = date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
@@ -57,6 +64,8 @@ data class AuditEntry(
 enum class SpaceKind {
     @SerialName("list") LIST,
     @SerialName("diary") DIARY,
+    /** A set of people sharing a calendar and lists; its items are the spaces in it. */
+    @SerialName("group") GROUP,
 }
 
 @Serializable
@@ -81,10 +90,28 @@ data class TodoList(
     val relaySince: Long = 0,
     /** Every recorded change, by [AuditEntry.id]. Synced. */
     val audit: Map<String, AuditEntry> = emptyMap(),
+    /** Local only: the group this space belongs to, if any. */
+    val groupId: String? = null,
 ) {
     val visibleItems: List<Item>
         get() = items.values.filter { !it.deleted }.sortedWith(compareBy({ it.position }, { it.id }))
 }
+
+/**
+ * How a group looks, shared by everyone in it (stored as JSON in the group's [GROUP_LOOK_ITEM]).
+ * The photo travels as [photoParts] base64 pieces in items `photo:<photoId>:<n>`.
+ */
+@Serializable
+data class Look(
+    /** Colour theme; null follows each phone's app theme. "photo" takes the colours from the photo. */
+    val themeId: String? = null,
+    val photoId: String? = null,
+    val photoParts: Int = 0,
+    /** How strongly the photo shows through, 0 (barely) to 1 (fully). */
+    val photoStrength: Float = 0.45f,
+    /** Accent colour (ARGB) overriding the theme's; null keeps the theme's. */
+    val accent: Long? = null,
+)
 
 /** Just joined and nothing received yet. */
 val TodoList.isJoining: Boolean get() = !createdHere && members.isEmpty() && items.isEmpty()

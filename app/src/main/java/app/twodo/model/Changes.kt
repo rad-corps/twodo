@@ -22,6 +22,9 @@ private fun Item.whenText(): String {
  * null for moves and anything not worth mentioning.
  */
 fun describeChange(before: Item?, after: Item): String? = when {
+    // Photo pieces and settings in a group aren't news in themselves.
+    after.isPhotoPart -> null
+    after.id == GROUP_LOOK_ITEM -> if (after.deleted) null else "changed the group's look"
     after.deleted -> if (before == null || before.deleted) null else "removed ${before.text}${before.whenText()}"
     before == null || before.deleted -> "added ${after.text}${after.whenText()}"
     before.checked != after.checked -> (if (after.checked) "ticked " else "unticked ") + after.text

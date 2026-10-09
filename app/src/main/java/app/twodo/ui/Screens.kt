@@ -48,10 +48,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -87,6 +91,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -99,6 +104,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.twodo.R
 import app.twodo.BuildConfig
 import app.twodo.TwoDoApp
+import app.twodo.data.ALL_CALENDARS
+import app.twodo.data.OTHER_LISTS
+import app.twodo.model.calendarRef
+import app.twodo.model.sharedLook
 import app.twodo.net.SyncLog
 import app.twodo.model.Invite
 import app.twodo.model.Item
@@ -132,9 +141,39 @@ fun TwoDoRoot(
     val appTheme = themeById(appThemeId)
     val lists by app.repo.lists.collectAsStateWithLifecycle()
     val status by app.sync.status.collectAsStateWithLifecycle()
-    var openListId by rememberSaveable { mutableStateOf<String?>(null) }
+    // The group on screen (or OTHER_LISTS), and a list or diary opened on top of it.
+    var view by rememberSaveable { mutableStateOf(app.identity.lastView) }
+    var openSpaceId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
-    var askName by remember { mutableStateOf(!app.identity.hasName) }
+    val scope = rememberCoroutineScope()
+    var newGroup by remember { mutableStateOf(false) }
+    var joining by remember { mutableStateOf(false) }
+    var settings by remember { mutableStateOf(false) }
+    // Someone who opens an invite link straight away skips the welcome screen, so ask their name then.
+    var nameAsked by rememberSaveable { mutableStateOf(false) }
+
+    fun show(viewId: String) {
+        view = viewId
+        openSpaceId = null
+        app.identity.lastView = viewId
+    }
+
+    /** Shows [listId]: a group's home, a list on top of its group, or a list outside any group. */
+    fun open(listId: String) {
+        val list = app.repo.lists.value[listId] ?: return
+        when {
+            list.kind == SpaceKind.GROUP -> show(list.id)
+            list.groupId != null -> {
+                show(list.groupId)
+                // The calendar is the group's first tab; lists open on top.
+                if (list.kind == SpaceKind.LIST) openSpaceId = list.id
+            }
+            else -> {
+                show(OTHER_LISTS)
+                openSpaceId = list.id
+            }
+        }
+    }
 
     LaunchedEffect(Unit) { app.repo.conflicts.collect { snackbar.showSnackbar(it.describe()) } }
     // Joins and leaves get a pull-down notification too; this is the in-app version.
@@ -150,46 +189,92 @@ fun TwoDoRoot(
     }
     LaunchedEffect(openRequest) {
         if (openRequest != null) {
-            openListId = openRequest
+            open(openRequest)
             onOpenHandled()
         }
     }
     LaunchedEffect(pendingInvite) {
         if (pendingInvite != null) {
-            openListId = app.repo.joinList(pendingInvite).id
+            open(app.repo.joinList(pendingInvite).id)
             onInviteHandled()
         }
     }
 
-    if (askName) {
-        TextPromptDialog(
-            title = "What's your name?",
-            label = "Your name",
-            confirm = "Save",
-            supporting = "Shown to others next to items you tick. You can change it in Settings.",
-            onDismiss = { askName = false },
-        ) { name ->
-            app.setName(name)
-            askName = false
+    val groups = lists.values.filter { it.kind == SpaceKind.GROUP }.sortedBy { it.name.lowercase() }
+    val others = lists.values.filter { it.kind != SpaceKind.GROUP && it.groupId == null }.sortedBy { it.name.lowercase() }
+    val calendars = groups.mapNotNull { g -> g.calendarRef?.spaceId?.let { lists[it] }?.let { it to g } } +
+        others.filter { it.kind == SpaceKind.DIARY }.map { it to null }
+    val navigation = GroupNavigation(
+        groups = groups,
+        hasOtherLists = others.isNotEmpty(),
+        hasAllCalendars = calendars.size > 1,
+        onSwitch = ::show,
+        onAllCalendars = { show(ALL_CALENDARS) },
+        onOtherLists = { show(OTHER_LISTS) },
+        onNewGroup = { newGroup = true },
+        onJoin = { joining = true },
+        onSettings = { settings = true },
+    )
+    val space = openSpaceId?.let { lists[it] }
+    val allCalendars = view == ALL_CALENDARS && calendars.size > 1
+    val group = view?.let { lists[it] }?.takeIf { it.kind == SpaceKind.GROUP }
+        ?: if ((view == OTHER_LISTS && others.isNotEmpty()) || allCalendars) null else groups.firstOrNull()
+    val look = rememberLook(app, space ?: group, appTheme)
+    LaunchedEffect(look.theme.dark) { onScreenDark(look.theme.dark) }
+
+    LookSurface(look) {
+        when {
+            lists.isEmpty() -> WelcomeScreen(
+                app,
+                onStart = { name -> scope.launch { show(app.repo.createGroup(name).id) } },
+                onJoin = { joining = true },
+            )
+            space != null -> {
+                BackHandler { openSpaceId = null }
+                val spaceStatus = status[space.id] ?: SyncStatus()
+                if (space.kind == SpaceKind.DIARY) {
+                    DiaryScreen(app, space, spaceStatus, snackbar, onBack = { openSpaceId = null })
+                } else {
+                    ListScreen(app, space, spaceStatus, snackbar, onBack = { openSpaceId = null })
+                }
+            }
+            group != null -> GroupScreen(app, group, lists, status, snackbar, navigation, onOpenSpace = { openSpaceId = it })
+            allCalendars -> AllCalendarsScreen(app, calendars, navigation)
+            else -> ListsScreen(app, others, status, snackbar, appTheme, navigation, onOpen = { openSpaceId = it })
         }
     }
 
-    val open = openListId?.let { lists[it] }
-    val screenTheme = open?.theme(appTheme) ?: appTheme
-    LaunchedEffect(screenTheme.dark) { onScreenDark(screenTheme.dark) }
-    if (open == null) {
-        ListsScreen(app, lists.values.sortedBy { it.name.lowercase() }, status, snackbar, appTheme, onOpen = { openListId = it })
-    } else {
-        BackHandler { openListId = null }
-        val openStatus = status[open.id] ?: SyncStatus()
-        TwoDoTheme(screenTheme) {
-            if (open.kind == SpaceKind.DIARY) {
-                DiaryScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
-            } else {
-                ListScreen(app, open, openStatus, snackbar, onBack = { openListId = null })
-            }
+    if (lists.isNotEmpty() && !app.identity.hasName && !nameAsked) {
+        TextPromptDialog(
+            title = "What's your first name?",
+            label = "Your name",
+            confirm = "Save",
+            supporting = "So the others know who added what. You can change it in Settings.",
+            onDismiss = { nameAsked = true },
+        ) { name ->
+            app.setName(name)
+            nameAsked = true
         }
     }
+    if (newGroup) {
+        TextPromptDialog(
+            title = "Start a new group",
+            label = "Group name",
+            confirm = "Start",
+            supporting = "It comes with a calendar and a shopping list. Invite people once it's made.",
+            onDismiss = { newGroup = false },
+        ) { name ->
+            newGroup = false
+            scope.launch { show(app.repo.createGroup(name).id) }
+        }
+    }
+    if (joining) {
+        JoinDialog(onDismiss = { joining = false }) { invite ->
+            joining = false
+            scope.launch { open(app.repo.joinList(invite).id) }
+        }
+    }
+    if (settings) SettingsDialog(app, onDismiss = { settings = false })
 }
 
 @Composable
@@ -199,21 +284,34 @@ private fun ListsScreen(
     status: Map<String, SyncStatus>,
     snackbar: SnackbarHostState,
     appTheme: AppTheme,
+    navigation: GroupNavigation,
     onOpen: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var creating by remember { mutableStateOf(false) }
-    var joining by remember { mutableStateOf(false) }
-    var settings by remember { mutableStateOf(false) }
+    var switching by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Box {
+                        Row(
+                            Modifier.clip(RoundedCornerShape(10.dp)).clickable { switching = true }.padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                if (navigation.groups.isEmpty()) stringResource(R.string.brand_name) else "Other lists",
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Icon(Icons.Default.ArrowDropDown, "Switch group")
+                        }
+                        GroupSwitcher(switching, null, navigation, onDismiss = { switching = false })
+                    }
+                },
                 colors = flatBar(),
                 actions = {
-                    TextButton(onClick = { joining = true }) { Text("Join list") }
-                    IconButton(onClick = { settings = true }) { Icon(Icons.Default.Settings, "Settings") }
+                    IconButton(onClick = navigation.onSettings) { Icon(Icons.Default.Settings, "Settings") }
                 },
             )
         },
@@ -245,6 +343,7 @@ private fun ListsScreen(
             }
         }
         LazyColumn(contentPadding = padding) {
+            if (navigation.groups.isEmpty()) item { GroupsIntro(onStart = navigation.onNewGroup) }
             items(lists, key = { it.id }) { list ->
                 Row(
                     Modifier.fillMaxWidth().clickable { onOpen(list.id) }.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -273,23 +372,80 @@ private fun ListsScreen(
             scope.launch { onOpen(app.repo.createList(name, kind).id) }
         }
     }
-    if (joining) {
-        JoinDialog(onDismiss = { joining = false }) { invite ->
-            joining = false
-            scope.launch { onOpen(app.repo.joinList(invite).id) }
+}
+
+/** Every calendar this phone has — each group's, and diaries outside groups — in one schedule. */
+@Composable
+private fun AllCalendarsScreen(app: TwoDoApp, calendars: List<Pair<TodoList, TodoList?>>, navigation: GroupNavigation) {
+    var switching by remember { mutableStateOf(false) }
+    val sources = calendars.map { (calendar, group) ->
+        val color = (group?.sharedLook?.accent ?: ACCENTS[Math.floorMod((group ?: calendar).id.hashCode(), ACCENTS.size)])
+        ScheduleSource(calendar, group?.name ?: calendar.name, Color(color))
+    }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                colors = flatBar(),
+                title = {
+                    Box {
+                        Row(
+                            Modifier.clip(RoundedCornerShape(10.dp)).clickable { switching = true }.padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("All calendars", style = MaterialTheme.typography.titleLarge)
+                            Icon(Icons.Default.ArrowDropDown, "Switch group")
+                        }
+                        GroupSwitcher(switching, ALL_CALENDARS, navigation, onDismiss = { switching = false })
+                    }
+                },
+            )
+        },
+    ) { padding -> ScheduleView(app, sources, Modifier.padding(padding)) }
+}
+
+/** For people from before groups: what groups are, and a button to start one. */
+@Composable
+private fun GroupsIntro(onStart: () -> Unit) {
+    Card(
+        Modifier.fillMaxWidth().padding(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("New: groups", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "One calendar and your lists, shared with the same people. Invite them once and they get everything. " +
+                    "You can move these lists into the group afterwards.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = onStart) { Text("Start a group") }
         }
     }
-    if (settings) SettingsDialog(app, onDismiss = { settings = false })
 }
 
 @Composable
-private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackbar: SnackbarHostState, onBack: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var newText by rememberSaveable(list.id) { mutableStateOf("") }
+internal fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackbar: SnackbarHostState, onBack: () -> Unit) {
     var showHistory by rememberSaveable(list.id) { mutableStateOf(false) }
     val names by app.sync.names.collectAsStateWithLifecycle()
-    val highlighted = rememberRemoteHighlights(app, list.id)
     if (showHistory) return HistoryScreen(list, app.identity.deviceId, names, onBack = { showHistory = false })
+    Scaffold(
+        topBar = { SpaceTopBar(app, list, status, onBack, onHistory = { showHistory = true }) },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        ListBody(app, list, status, Modifier.padding(padding))
+    }
+}
+
+/** The list itself: add bar and tickable, draggable items. */
+@Composable
+internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifier: Modifier = Modifier) {
+    val scope = rememberCoroutineScope()
+    var newText by rememberSaveable(list.id) { mutableStateOf("") }
+    val names by app.sync.names.collectAsStateWithLifecycle()
+    val highlighted = rememberRemoteHighlights(app, list.id)
 
     fun add() {
         val text = newText
@@ -297,87 +453,82 @@ private fun ListScreen(app: TwoDoApp, list: TodoList, status: SyncStatus, snackb
         scope.launch { app.repo.addItem(list.id, text) }
     }
 
-    Scaffold(
-        topBar = { SpaceTopBar(app, list, status, onBack, onHistory = { showHistory = true }) },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            JoiningBanner(list, status)
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newText,
-                    onValueChange = { newText = it },
-                    placeholder = { Text("Add an item") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { add() }),
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = ::add, enabled = newText.isNotBlank()) { Icon(Icons.Default.Add, "Add") }
-            }
-            // Local copy so dragging is smooth; committed to the repository when the drag ends.
-            var ordered by remember(list.visibleItems) { mutableStateOf(list.visibleItems) }
-            val listState = rememberLazyListState()
-            val reorderState = rememberReorderableLazyListState(listState) { from, to ->
-                ordered = ordered.toMutableList().apply { add(to.index, removeAt(from.index)) }
-            }
-            LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(ordered, key = { it.id }) { item ->
-                    ReorderableItem(reorderState, key = item.id) {
-                        val background by animateColorAsState(
-                            if (item.id in highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                            animationSpec = tween(600),
-                            label = "highlight",
+    Column(modifier.fillMaxSize()) {
+        JoiningBanner(list, status)
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = newText,
+                onValueChange = { newText = it },
+                placeholder = { Text("Add an item") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = ::add, enabled = newText.isNotBlank()) { Icon(Icons.Default.Add, "Add") }
+        }
+        // Local copy so dragging is smooth; committed to the repository when the drag ends.
+        var ordered by remember(list.visibleItems) { mutableStateOf(list.visibleItems) }
+        val listState = rememberLazyListState()
+        val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+            ordered = ordered.toMutableList().apply { add(to.index, removeAt(from.index)) }
+        }
+        LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
+            items(ordered, key = { it.id }) { item ->
+                ReorderableItem(reorderState, key = item.id) {
+                    val background by animateColorAsState(
+                        if (item.id in highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        animationSpec = tween(600),
+                        label = "highlight",
+                    )
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(background)
+                            .clickable { scope.launch { app.repo.setChecked(list.id, item.id, !item.checked) } }
+                            .padding(start = 8.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = item.checked,
+                            onCheckedChange = { scope.launch { app.repo.setChecked(list.id, item.id, it) } },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = MaterialTheme.colorScheme.primary,
+                                uncheckedColor = MaterialTheme.colorScheme.outline,
+                            ),
                         )
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .background(background)
-                                .clickable { scope.launch { app.repo.setChecked(list.id, item.id, !item.checked) } }
-                                .padding(start = 8.dp, end = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = item.checked,
-                                onCheckedChange = { scope.launch { app.repo.setChecked(list.id, item.id, it) } },
-                                colors = CheckboxDefaults.colors(
-                                    checkedColor = MaterialTheme.colorScheme.primary,
-                                    uncheckedColor = MaterialTheme.colorScheme.outline,
-                                ),
+                        Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
+                            Text(
+                                item.text,
+                                style = MaterialTheme.typography.bodyLarge,
+                                textDecoration = if (item.checked) TextDecoration.LineThrough else null,
+                                color = if (item.checked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                             )
-                            Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
+                            if (item.checked) {
                                 Text(
-                                    item.text,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-                                    color = if (item.checked) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                                    tickedBy(item, app.identity.deviceId, names),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline,
                                 )
-                                if (item.checked) {
-                                    Text(
-                                        tickedBy(item, app.identity.deviceId, names),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.outline,
-                                    )
-                                }
                             }
-                            IconButton(onClick = { scope.launch { app.repo.deleteItem(list.id, item.id) } }) {
-                                Icon(Icons.Default.Close, "Delete", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
-                            }
-                            Icon(
-                                painterResource(R.drawable.ic_drag_handle),
-                                "Reorder",
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.draggableHandle(onDragStopped = {
-                                    val index = ordered.indexOfFirst { it.id == item.id }
-                                    scope.launch { app.repo.moveItem(list.id, item.id, index) }
-                                }).padding(12.dp),
-                            )
                         }
+                        IconButton(onClick = { scope.launch { app.repo.deleteItem(list.id, item.id) } }) {
+                            Icon(Icons.Default.Close, "Delete", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
+                        }
+                        Icon(
+                            painterResource(R.drawable.ic_drag_handle),
+                            "Reorder",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.draggableHandle(onDragStopped = {
+                                val index = ordered.indexOfFirst { it.id == item.id }
+                                scope.launch { app.repo.moveItem(list.id, item.id, index) }
+                            }).padding(12.dp),
+                        )
                     }
                 }
             }
@@ -393,12 +544,14 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
     var menu by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var pickingTheme by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val inGroup = list.groupId != null
     TopAppBar(
         title = {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(list.kind.icon, list.kind.label, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Icon(list.kind.icon, list.kind.label(inGroup), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(list.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
                 }
@@ -414,12 +567,20 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
         },
         actions = {
-            IconButton(onClick = { sharing = true }) { Icon(Icons.Default.Share, "Share") }
+            // In a group, people are invited to the whole group and the look is the group's.
+            if (!inGroup) IconButton(onClick = { sharing = true }) { Icon(Icons.Default.Share, "Share") }
             IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onHistory() })
-                DropdownMenuItem(text = { Text("Theme") }, onClick = { menu = false; pickingTheme = true })
-                DropdownMenuItem(text = { Text("Remove from this phone") }, onClick = { menu = false; confirmRemove = true })
+                if (inGroup) {
+                    DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = true })
+                    if (list.kind == SpaceKind.LIST) {
+                        DropdownMenuItem(text = { Text("Delete list") }, onClick = { menu = false; confirmRemove = true })
+                    }
+                } else {
+                    DropdownMenuItem(text = { Text("Theme") }, onClick = { menu = false; pickingTheme = true })
+                    DropdownMenuItem(text = { Text("Remove from this phone") }, onClick = { menu = false; confirmRemove = true })
+                }
             }
         },
     )
@@ -434,7 +595,27 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
             onDismiss = { pickingTheme = false },
         ) { id -> scope.launch { app.repo.setTheme(list.id, id) } }
     }
-    if (confirmRemove) {
+    if (renaming) {
+        TextPromptDialog(title = "Rename", label = "Name", confirm = "Save", initial = list.name, onDismiss = { renaming = false }) { name ->
+            renaming = false
+            scope.launch { app.repo.rename(list.id, name) }
+        }
+    }
+    if (confirmRemove && inGroup) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Delete “${list.name}”?") },
+            text = { Text("It's deleted for everyone in the group.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRemove = false
+                    onBack()
+                    scope.launch { app.repo.deleteFromGroup(list.id) }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
+        )
+    } else if (confirmRemove) {
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
             title = { Text("Remove “${list.name}”?") },
@@ -486,15 +667,24 @@ internal fun ShareDialog(app: TwoDoApp, list: TodoList, onDismiss: () -> Unit) {
     val membersBefore = remember(list.id) { list.members.keys }
     val newcomers = list.members.filterKeys { it !in membersBefore }.values
     val link = remember(list.id) { ShareLink.build(list) }
+    val isGroup = list.kind == SpaceKind.GROUP
+    val brand = stringResource(R.string.brand_name)
     val qr = remember(link) { BarcodeEncoder().encodeBitmap(link, BarcodeFormat.QR_CODE, 720, 720).asImageBitmap() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Share “${list.name}”") },
+        title = { Text(if (isGroup) "Invite to ${list.name}" else "Share “${list.name}”") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(qr, "QR code for this list", Modifier.size(260.dp))
+                Image(qr, "QR code for this ${if (isGroup) "group" else "list"}", Modifier.size(260.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("Scan this with ${stringResource(R.string.brand_name)} on the other phone (Join list). Anyone with this code can see and edit the list.")
+                Text(
+                    if (isGroup) {
+                        "On their phone: install $brand, tap “Join with an invite” and scan this code — or send them the link. " +
+                            "They'll get the calendar and all the lists. Only invite people you trust: they can see and change everything."
+                    } else {
+                        "Scan this with $brand on the other phone (Join list). Anyone with this code can see and edit the list."
+                    },
+                )
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (newcomers.isEmpty()) {
@@ -545,7 +735,7 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Join a list") },
+        title = { Text("Join with an invite") },
         text = {
             Column {
                 OutlinedButton(
@@ -553,7 +743,7 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
                         scanner.launch(
                             ScanOptions()
                                 .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                                .setPrompt("Scan the list's QR code")
+                                .setPrompt("Scan the invite's QR code")
                                 .setBeepEnabled(false)
                                 .setOrientationLocked(false),
                         )
@@ -598,6 +788,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
         ) { id -> if (id != null) themeId = id }
     }
     var notifyChanges by remember { mutableStateOf(app.identity.notifyChanges) }
+    var textScale by remember { mutableStateOf(app.identity.textScale) }
     var showLog by remember { mutableStateOf(false) }
     var direct by remember { mutableStateOf(app.identity.directConnections) }
     if (showLog) return ConnectionLogDialog(onDismiss = { showLog = false })
@@ -622,7 +813,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text("Theme")
                         Text(
-                            "${themeById(themeId).name} · lists and diaries can have their own (⋮ › Theme)",
+                            "${themeById(themeId).name} · groups can choose their own look",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -633,6 +824,18 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) { Box(Modifier.size(12.dp).clip(CircleShape).background(colors.primary)) }
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("Text size")
+                Spacer(Modifier.height(6.dp))
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    TEXT_SIZES.forEachIndexed { index, (label, scale) ->
+                        SegmentedButton(
+                            selected = textScale == scale,
+                            onClick = { textScale = scale; app.setTextScale(scale) },
+                            shape = SegmentedButtonDefaults.itemShape(index, TEXT_SIZES.size),
+                        ) { Text(label) }
+                    }
                 }
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -732,7 +935,11 @@ private fun ConnectionLogDialog(onDismiss: () -> Unit) {
 internal fun JoiningBanner(list: TodoList, status: SyncStatus) {
     // The phone that shares also does a first sync with a newcomer; that side gets the share dialog's status instead.
     if (!list.isJoining && !(status.receiving && !list.createdHere)) return
-    val what = if (list.kind == SpaceKind.DIARY) "diary" else "list"
+    val what = when (list.kind) {
+        SpaceKind.DIARY -> if (list.groupId != null) "calendar" else "diary"
+        SpaceKind.GROUP -> "group"
+        SpaceKind.LIST -> "list"
+    }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = MaterialTheme.colorScheme.surfaceVariant)
         Spacer(Modifier.height(8.dp))
@@ -756,6 +963,7 @@ private fun TodoList.summary(): String = if (isJoining) "Joining…" else when (
         if (count == 0) "Diary · nothing today" else "Diary · $count today"
     }
     SpaceKind.LIST -> "${visibleItems.count { !it.checked }} to do"
+    SpaceKind.GROUP -> "Group"
 }
 
 /** Name plus a List / Diary choice. */
@@ -793,10 +1001,11 @@ internal fun TextPromptDialog(
     label: String,
     confirm: String,
     supporting: String? = null,
+    initial: String = "",
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -844,12 +1053,29 @@ internal fun SyncDot(status: SyncStatus?) {
 
 internal const val HIGHLIGHT_MS = 2_500L
 
-internal fun SyncStatus?.summary(): String = when {
-    this == null -> "Connecting…"
-    !online && peerNames.isEmpty() -> "Offline"
-    trackersOnline == 0 && relaysOnline == 0 && peerNames.isEmpty() -> "Connecting…"
-    peerNames.size == 1 -> "Connected to ${peerNames.single()}"
-    peerNames.size > 1 -> "Connected to ${peerNames.size} devices"
-    relayPeerNames.isNotEmpty() -> "Syncing with ${relayPeerNames.joinToString(", ")} via relay"
-    else -> "Looking for other devices…"
+/** Text size choices: label and scale on top of the phone's own font size. */
+private val TEXT_SIZES = listOf("Normal" to 1f, "Large" to 1.15f, "Larger" to 1.3f)
+
+/** Plain-words sync state: who we're in sync with, or why not. How it's connected doesn't matter here. */
+internal fun SyncStatus?.summary(): String {
+    if (this == null) return "Connecting…"
+    val people = online()
+    return when {
+        people.isNotEmpty() -> "In sync with ${joinNames(people)}"
+        !online -> "Offline · changes will send later"
+        trackersOnline == 0 && relaysOnline == 0 -> "Connecting…"
+        else -> "Waiting for the others to come online"
+    }
+}
+
+/** Everyone in sync with this phone right now, directly or through the relays. */
+internal fun SyncStatus.online(): List<String> = (peerNames + relayPeerNames).distinct()
+
+/** "Sarah", "Sarah and Tom", "Sarah, Tom and 2 others". */
+internal fun joinNames(names: List<String>): String = when (names.size) {
+    0 -> ""
+    1 -> names[0]
+    2 -> "${names[0]} and ${names[1]}"
+    3 -> "${names[0]}, ${names[1]} and ${names[2]}"
+    else -> "${names[0]}, ${names[1]} and ${names.size - 2} others"
 }

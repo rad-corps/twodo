@@ -12,6 +12,7 @@ import app.twodo.model.AuditEntry
 import app.twodo.model.Item
 import app.twodo.model.ListKeys
 import app.twodo.model.describeChange
+import app.twodo.model.isPhotoPart
 import app.twodo.net.ListSwarm
 import app.twodo.net.Peer
 import app.twodo.net.SwarmEvents
@@ -280,7 +281,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 identity.rememberName(message.deviceId, message.deviceName)
                 _names.value = identity.knownNames
                 val member = repo.recordMember(listId, message.deviceId, message.deviceName)
-                if (member.worthAnnouncing) _events.tryEmit(ListEvent.Joined(listId, listName(listId), message.deviceName))
+                if (member.worthAnnouncing && !inGroup(listId)) _events.tryEmit(ListEvent.Joined(listId, listName(listId), message.deviceName))
                 val fresh = age < FRESH_HELLO_S
                 if (message.wantFull && fresh) sendFullViaRelays(relayList, message.deviceName)
                 // Still waiting for the whole list and someone new is around: ask them.
@@ -303,7 +304,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                     relayList.awaitingFull = false
                     relayList.trace("received the whole list")
                     val list = repo.lists.value[listId]
-                    if (list != null && !list.createdHere) {
+                    if (list != null && !list.createdHere && list.groupId == null) {
                         _events.tryEmit(ListEvent.JoinedList(listId, list.name, message.from ?: "the others"))
                     }
                     publishStatus()
@@ -314,7 +315,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 if (message.deviceId == identity.deviceId) return
                 relayList.seen.remove(message.deviceId)
                 val name = repo.removeMember(listId, message.deviceId) ?: return
-                _events.tryEmit(ListEvent.Left(listId, listName(listId), name))
+                if (!inGroup(listId)) _events.tryEmit(ListEvent.Left(listId, listName(listId), name))
             }
         }
     }
@@ -331,7 +332,10 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
         if (now - relayList.lastFullSentAt < FULL_RESEND_MS) return
         relayList.lastFullSentAt = now
         val list = repo.lists.value[relayList.listId] ?: return
-        val itemChunks = chunkBySize(list.items.values.toList()) { json.encodeToString(Item.serializer(), it).length }
+        // Photo pieces are base64, which hardly compresses, so they count three times towards the limit.
+        val itemChunks = chunkBySize(list.items.values.toList()) {
+            json.encodeToString(Item.serializer(), it).length * (if (it.isPhotoPart) 3 else 1)
+        }
         val auditChunks = chunkBySize(list.audit.values.toList()) { json.encodeToString(AuditEntry.serializer(), it).length }
         val count = maxOf(itemChunks.size, auditChunks.size, 1)
         relayList.trace("sending the whole list to $forName via relays ($count message${if (count == 1) "" else "s"})")
@@ -352,13 +356,13 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
      * Splits [values] into chunks of at most [RELAY_CHUNK_BYTES] of JSON; compressed, that stays well
      * under the relays' event size limits.
      */
-    private fun <T> chunkBySize(values: List<T>, size: (T) -> Int): List<List<T>> {
+    private fun <T> chunkBySize(values: List<T>, limit: Int = RELAY_CHUNK_BYTES, size: (T) -> Int): List<List<T>> {
         val chunks = mutableListOf<List<T>>()
         var current = mutableListOf<T>()
         var bytes = 0
         for (value in values) {
             val n = size(value)
-            if (current.isNotEmpty() && bytes + n > RELAY_CHUNK_BYTES) {
+            if (current.isNotEmpty() && bytes + n > limit) {
                 chunks += current
                 current = mutableListOf()
                 bytes = 0
@@ -400,11 +404,13 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
         when (message) {
             is SyncMessage.Hello -> {
                 peer.deviceName = message.deviceName
+                // Seen through the relays under an older name? Keep one name per person.
+                relayLists[swarm.listId]?.seen?.computeIfPresent(message.deviceId) { _, (_, at) -> message.deviceName to at }
                 identity.rememberName(message.deviceId, message.deviceName)
                 _names.value = identity.knownNames
                 val member = repo.recordMember(swarm.listId, message.deviceId, message.deviceName)
                 if (member.firstContact) firstSyncPeers += peer
-                if (member.worthAnnouncing) {
+                if (member.worthAnnouncing && !inGroup(swarm.listId)) {
                     _events.tryEmit(ListEvent.Joined(swarm.listId, listName(swarm.listId), message.deviceName))
                 }
                 publishStatus()
@@ -430,7 +436,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 if (message.full && message.last && firstSyncPeers.remove(peer)) {
                     publishStatus()
                     val list = repo.lists.value[swarm.listId]
-                    if (list != null && !list.createdHere) {
+                    if (list != null && !list.createdHere && list.groupId == null) {
                         _events.tryEmit(ListEvent.JoinedList(list.id, list.name, peer.deviceName ?: "the other phone"))
                     }
                 }
@@ -438,7 +444,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
             }
             is SyncMessage.Leave -> {
                 val name = repo.removeMember(swarm.listId, message.deviceId) ?: peer.deviceName ?: return
-                _events.tryEmit(ListEvent.Left(swarm.listId, listName(swarm.listId), name))
+                if (!inGroup(swarm.listId)) _events.tryEmit(ListEvent.Left(swarm.listId, listName(swarm.listId), name))
             }
         }
     }
@@ -455,14 +461,21 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     private fun listName(listId: String) = repo.lists.value[listId]?.name ?: "a list"
 
+    /** Spaces in a group: people joining and leaving are announced once, for the group. */
+    private fun inGroup(listId: String) = repo.lists.value[listId]?.groupId != null
+
     /**
      * Tells the others this device is leaving the list, then removes it from this device. Runs in the
      * manager's own scope so it completes even if the screen that asked for it goes away.
      */
     fun leave(listId: String) {
         scope.launch {
-            broadcast(listId, SyncMessage.Leave(identity.deviceId))
-            publishToRelays(listId, SyncMessage.Leave(identity.deviceId))
+            // Leaving a group leaves everything in it.
+            val ids = repo.lists.value.values.filter { it.groupId == listId }.map { it.id } + listId
+            for (id in ids) {
+                broadcast(id, SyncMessage.Leave(identity.deviceId))
+                publishToRelays(id, SyncMessage.Leave(identity.deviceId))
+            }
             delay(500) // let the messages go out before the connections close
             repo.removeList(listId)
         }
@@ -495,7 +508,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     /** Sends items and audit entries, split into chunks that fit in a data channel message. */
     private fun sendItems(swarm: ListSwarm, peer: Peer, items: List<Item>, audit: List<AuditEntry>, full: Boolean = false) {
-        val itemChunks = items.chunked(ITEMS_PER_MESSAGE)
+        // By size rather than count: a group's photo pieces are much bigger than ordinary items.
+        val itemChunks = chunkBySize(items, DIRECT_CHUNK_BYTES) { json.encodeToString(Item.serializer(), it).length }
         val auditChunks = audit.chunked(AUDIT_PER_MESSAGE)
         val count = maxOf(itemChunks.size, auditChunks.size, 1)
         for (i in 0 until count) {
@@ -537,8 +551,8 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     private companion object {
         const val TAG = "TwoDo"
-        // ~300 bytes per item and ~150 per audit entry keeps each chunk well under the ~256 KB limit.
-        const val ITEMS_PER_MESSAGE = 100
+        // Items up to ~100 KB of JSON and ~150 bytes per audit entry keep each chunk well under the ~256 KB limit.
+        const val DIRECT_CHUNK_BYTES = 100_000
         const val AUDIT_PER_MESSAGE = 200
         // Relay messages are compressed (~5x): ~120 KB of JSON becomes ~25-30 KB, under relays' limits.
         const val RELAY_CHUNK_BYTES = 120_000

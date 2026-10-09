@@ -12,11 +12,14 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,15 +54,20 @@ class MainActivity : ComponentActivity() {
                 val bars = if (screenDark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
                 enableEdgeToEdge(bars, bars)
             }
-            TwoDoTheme(themeById(themeId)) {
-                TwoDoRoot(
-                    app,
-                    pendingInvite.value,
-                    onInviteHandled = { pendingInvite.value = null },
-                    openRequest = pendingOpen.value,
-                    onOpenHandled = { pendingOpen.value = null },
-                    onScreenDark = { screenDark = it },
-                )
+            val textScale by app.textScale.collectAsStateWithLifecycle()
+            val density = LocalDensity.current
+            // Larger text everywhere, on top of the phone's own font size setting.
+            CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale * textScale)) {
+                TwoDoTheme(themeById(themeId)) {
+                    TwoDoRoot(
+                        app,
+                        pendingInvite.value,
+                        onInviteHandled = { pendingInvite.value = null },
+                        openRequest = pendingOpen.value,
+                        onOpenHandled = { pendingOpen.value = null },
+                        onScreenDark = { screenDark = it },
+                    )
+                }
             }
         }
     }

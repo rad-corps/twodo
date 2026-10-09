@@ -44,7 +44,28 @@ class Identity(context: Context) {
         get() = prefs.getBoolean("directConnections", true)
         set(value) = prefs.edit { putBoolean("directConnections", value) }
 
+    /** Text size: 1 is normal; larger for easier reading. Personal, not part of any group's look. */
+    var textScale: Float
+        get() = prefs.getFloat("textScale", 1f)
+        set(value) = prefs.edit { putFloat("textScale", value) }
+
+    /** The group (or [OTHER_LISTS]) shown last, to open on it next time. */
+    var lastView: String?
+        get() = prefs.getString("lastView", null)
+        set(value) = prefs.edit { putString("lastView", value) }
+
+    /** Calendars open on the schedule (everything coming up) rather than one day. */
+    var scheduleView: Boolean
+        get() = prefs.getBoolean("scheduleView", false)
+        set(value) = prefs.edit { putBoolean("scheduleView", value) }
+
     var backgroundSync: Boolean
         get() = prefs.getBoolean("backgroundSync", true)
         set(value) = prefs.edit { putBoolean("backgroundSync", value) }
 }
+
+/** [Identity.lastView] for the lists and diaries that aren't in a group. */
+const val OTHER_LISTS = "other"
+
+/** [Identity.lastView] for everyone's calendars in one schedule. */
+const val ALL_CALENDARS = "all-calendars"

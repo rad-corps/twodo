@@ -26,6 +26,9 @@ class TwoDoApp : Application() {
     lateinit var appTheme: MutableStateFlow<String>
         private set
 
+    lateinit var textScale: MutableStateFlow<Float>
+        private set
+
     /** Number of started activities; conflicts are shown in-app while visible, as notifications otherwise. */
     var visibleActivities = 0
 
@@ -37,6 +40,7 @@ class TwoDoApp : Application() {
         repo = ListRepository(File(filesDir, "lists"), identity)
         sync = SyncManager(this, repo, identity)
         appTheme = MutableStateFlow(identity.themeId)
+        textScale = MutableStateFlow(identity.textScale)
         Notifications.createChannels(this)
         SyncWorker.schedule(this)
         scope.launch {
@@ -66,6 +70,11 @@ class TwoDoApp : Application() {
     fun setTheme(themeId: String) {
         identity.themeId = themeId
         appTheme.value = themeId
+    }
+
+    fun setTextScale(scale: Float) {
+        identity.textScale = scale
+        textScale.value = scale
     }
 
     fun setBackgroundSync(enabled: Boolean) {

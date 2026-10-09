@@ -3,6 +3,15 @@ package app.twodo.data
 import android.util.Log
 import app.twodo.model.AuditEntry
 import app.twodo.model.Conflict
+import app.twodo.model.GROUP_LOOK_ITEM
+import app.twodo.model.GROUP_NAME_ITEM
+import app.twodo.model.Look
+import app.twodo.model.isPhotoPart
+import app.twodo.model.photoBase64
+import app.twodo.model.photoPartId
+import app.twodo.model.sharedLook
+import app.twodo.model.splitPhoto
+import app.twodo.model.toJson
 import app.twodo.model.Invite
 import app.twodo.model.Item
 import app.twodo.model.ListKeys
@@ -14,6 +23,8 @@ import app.twodo.model.edited
 import app.twodo.model.merge
 import app.twodo.model.mergeAudit
 import app.twodo.model.moved
+import app.twodo.model.planGroup
+import app.twodo.model.syncedGroupName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +42,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.time.LocalDate
+import java.util.Base64
 import java.util.UUID
 
 /** A local edit that needs to be sent to peers, with its audit entry if it's worth recording. */
@@ -55,14 +67,172 @@ class ListRepository(private val dir: File, private val identity: Identity) {
     private val _localEdits = MutableSharedFlow<LocalEdit>(extraBufferCapacity = 256)
     val localEdits: SharedFlow<LocalEdit> = _localEdits
 
+    private val _photos = MutableStateFlow(0)
+
+    /** Ticks whenever a group photo has been saved, so screens can show it. */
+    val photos: StateFlow<Int> = _photos.asStateFlow()
+
     private val _conflicts = MutableSharedFlow<Conflict>(extraBufferCapacity = 64)
     val conflicts: SharedFlow<Conflict> = _conflicts
 
-    suspend fun createList(name: String, kind: SpaceKind = SpaceKind.LIST): TodoList = mutex.withLock {
-        val fallback = if (kind == SpaceKind.DIARY) "Diary" else "My list"
-        val list = TodoList(UUID.randomUUID().toString(), name.trim().ifEmpty { fallback }, ListKeys.newSecret(), createdHere = true, kind = kind)
+    suspend fun createList(name: String, kind: SpaceKind = SpaceKind.LIST): TodoList = mutex.withLock { newSpace(name, kind) }
+
+    private suspend fun newSpace(name: String, kind: SpaceKind, groupId: String? = null): TodoList {
+        val fallback = when (kind) {
+            SpaceKind.DIARY -> "Calendar"
+            SpaceKind.GROUP -> "Family"
+            SpaceKind.LIST -> "My list"
+        }
+        val list = TodoList(
+            UUID.randomUUID().toString(), name.trim().ifEmpty { fallback }, ListKeys.newSecret(),
+            createdHere = true, kind = kind, groupId = groupId,
+        )
         save(list)
-        list
+        return list
+    }
+
+    /** Starts a group with its calendar and a shopping list, ready to invite people to. */
+    suspend fun createGroup(name: String): TodoList = mutex.withLock {
+        val group = newSpace(name, SpaceKind.GROUP)
+        putGroupItem(group.id, nameItem(group.name))
+        putGroupItem(group.id, spaceItem(newSpace("Calendar", SpaceKind.DIARY, group.id)))
+        putGroupItem(group.id, spaceItem(newSpace("Shopping", SpaceKind.LIST, group.id)))
+        _lists.value.getValue(group.id)
+    }
+
+    /** Adds a new list to the group, for everyone in it. */
+    suspend fun addToGroup(groupId: String, name: String, kind: SpaceKind = SpaceKind.LIST): TodoList? = mutex.withLock {
+        if (_lists.value[groupId]?.kind != SpaceKind.GROUP) return null
+        val space = newSpace(name, kind, groupId)
+        putGroupItem(groupId, spaceItem(space))
+        space
+    }
+
+    /** Moves an existing list or diary into the group; everyone in the group gets it. */
+    suspend fun moveIntoGroup(groupId: String, listId: String): Unit = mutex.withLock {
+        if (_lists.value[groupId]?.kind != SpaceKind.GROUP) return
+        val list = _lists.value[listId] ?: return
+        save(list.copy(groupId = groupId))
+        putGroupItem(groupId, spaceItem(list))
+    }
+
+    /** Takes a space out of its group for everyone in it, and removes it from this phone. */
+    suspend fun deleteFromGroup(listId: String): Unit = mutex.withLock {
+        val list = _lists.value[listId] ?: return
+        val groupId = list.groupId ?: return
+        val ref = _lists.value[groupId]?.items?.values?.firstOrNull { it.spaceId == listId && !it.deleted }
+        if (ref != null) putGroupItem(groupId, ref.edited(identity.deviceId, identity.deviceName, System.currentTimeMillis()) { copy(deleted = true) })
+        _lists.value -= listId
+        fileMutex.withLock { withContext(Dispatchers.IO) { file(listId).delete() } }
+    }
+
+    /** Renames a space; in a group the new name reaches everyone. */
+    suspend fun rename(listId: String, name: String): Unit = mutex.withLock {
+        val trimmed = name.trim().ifEmpty { return }
+        val list = _lists.value[listId] ?: return
+        if (list.name == trimmed) return
+        save(list.copy(name = trimmed))
+        val now = System.currentTimeMillis()
+        when {
+            list.kind == SpaceKind.GROUP -> {
+                val item = list.items[GROUP_NAME_ITEM]
+                putGroupItem(listId, item?.edited(identity.deviceId, identity.deviceName, now) { copy(text = trimmed, deleted = false) } ?: nameItem(trimmed))
+            }
+            list.groupId != null -> {
+                val ref = _lists.value[list.groupId]?.items?.values?.firstOrNull { it.spaceId == listId && !it.deleted } ?: return
+                putGroupItem(list.groupId, ref.edited(identity.deviceId, identity.deviceName, now) { copy(text = trimmed) })
+            }
+        }
+    }
+
+    /**
+     * Sets the group's look for everyone in it. [photoJpeg] replaces the photo; with [removePhoto] the
+     * photo goes; otherwise the current one stays.
+     */
+    suspend fun setGroupLook(groupId: String, look: Look, photoJpeg: ByteArray? = null, removePhoto: Boolean = false): Unit = mutex.withLock {
+        val group = _lists.value[groupId]?.takeIf { it.kind == SpaceKind.GROUP } ?: return
+        val now = System.currentTimeMillis()
+        val old = group.sharedLook
+        var next = look.copy(photoId = old.photoId, photoParts = old.photoParts)
+        if (photoJpeg != null || removePhoto) {
+            // Clear the old photo's pieces so they don't linger in everyone's copy.
+            group.items.values.filter { it.isPhotoPart && !it.deleted }.forEach { part ->
+                putGroupItem(groupId, part.edited(identity.deviceId, identity.deviceName, now) { copy(text = "", deleted = true) })
+            }
+            next = next.copy(photoId = null, photoParts = 0)
+        }
+        if (photoJpeg != null) {
+            val photoId = UUID.randomUUID().toString().take(8)
+            val parts = splitPhoto(Base64.getEncoder().encodeToString(photoJpeg))
+            parts.forEachIndexed { i, text ->
+                putGroupItem(groupId, Item(photoPartId(photoId, i), text, createdAt = now, version = Version(now, identity.deviceId), editor = identity.deviceName))
+            }
+            withContext(Dispatchers.IO) { photoFile(photoId).apply { parentFile?.mkdirs() }.writeBytes(photoJpeg) }
+            _photos.value++
+            next = next.copy(photoId = photoId, photoParts = parts.size)
+        }
+        val current = _lists.value.getValue(groupId).items[GROUP_LOOK_ITEM]
+        val item = current?.edited(identity.deviceId, identity.deviceName, now) { copy(text = next.toJson(), deleted = false) }
+            ?: Item(GROUP_LOOK_ITEM, next.toJson(), createdAt = 0, version = Version(now, identity.deviceId), editor = identity.deviceName)
+        putGroupItem(groupId, item)
+    }
+
+    /** Where a group photo is kept on this phone, once it has arrived. */
+    fun photoFile(photoId: String): File = File(File(dir.parentFile, "looks"), "$photoId.jpg")
+
+    /** Writes the group's photo to [photoFile] once all its pieces are here (caller holds [mutex]). */
+    private suspend fun assemblePhoto(group: TodoList) {
+        val look = group.sharedLook
+        val photoId = look.photoId ?: return
+        val file = photoFile(photoId)
+        if (file.exists()) return
+        val base64 = group.photoBase64(look) ?: return
+        val bytes = runCatching { Base64.getDecoder().decode(base64) }.getOrNull() ?: return
+        withContext(Dispatchers.IO) {
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            tmp.writeBytes(bytes)
+            tmp.renameTo(file)
+        }
+        _photos.value++
+    }
+
+    private fun nameItem(name: String): Item {
+        val now = System.currentTimeMillis()
+        return Item(GROUP_NAME_ITEM, name, createdAt = 0, version = Version(now, identity.deviceId), editor = identity.deviceName)
+    }
+
+    /** The group entry standing for [space]. */
+    private fun spaceItem(space: TodoList): Item {
+        val now = System.currentTimeMillis()
+        return Item(
+            id = space.id, text = space.name, createdAt = now, version = Version(now, identity.deviceId), editor = identity.deviceName,
+            spaceId = space.id, spaceSecret = space.secret, spaceKind = space.kind,
+        )
+    }
+
+    /** Saves a group item made here and sends it to the group (caller holds [mutex]). */
+    private suspend fun putGroupItem(groupId: String, item: Item) {
+        val group = _lists.value[groupId] ?: return
+        save(group.copy(items = group.items + (item.id to item)))
+        _localEdits.tryEmit(LocalEdit(groupId, item, null))
+    }
+
+    /**
+     * Brings this phone's spaces in line with the group: joins spaces others added, renames, and removes
+     * spaces others deleted (caller holds [mutex]).
+     */
+    private suspend fun followGroup(groupId: String) {
+        val group = _lists.value[groupId] ?: return
+        group.syncedGroupName?.let { if (it != group.name) save(group.copy(name = it)) }
+        assemblePhoto(group)
+        val plan = planGroup(group, _lists.value)
+        plan.join.forEach { save(TodoList(it.listId, it.name, it.secret, kind = it.kind, groupId = groupId)) }
+        plan.update.forEach { save(it) }
+        plan.remove.forEach { id ->
+            _lists.value -= id
+            fileMutex.withLock { withContext(Dispatchers.IO) { file(id).delete() } }
+        }
     }
 
     /** Adds a shared list from an invite; returns the existing one if already joined. */
@@ -70,10 +240,13 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         _lists.value[invite.listId] ?: TodoList(invite.listId, invite.name, invite.secret, kind = invite.kind).also { save(it) }
     }
 
-    /** Removes the list from this device only; peers keep their copies. */
+    /** Removes the list from this device only; peers keep their copies. Leaving a group removes its spaces too. */
     suspend fun removeList(listId: String) = mutex.withLock {
-        _lists.value -= listId
-        fileMutex.withLock { withContext(Dispatchers.IO) { file(listId).delete() } }
+        val inGroup = _lists.value.values.filter { it.groupId == listId }.map { it.id }
+        for (id in inGroup + listId) {
+            _lists.value -= id
+            fileMutex.withLock { withContext(Dispatchers.IO) { file(id).delete() } }
+        }
     }
 
     /** Adds an item at the bottom of the list. */
@@ -155,6 +328,7 @@ class ListRepository(private val dir: File, private val identity: Identity) {
             val (merged, newAudit) = result.list.mergeAudit(audit)
             // Synced data can be re-fetched, so its writes are batched: a big sync arrives in many chunks.
             if (merged != list) saveSoon(merged)
+            if (merged.kind == SpaceKind.GROUP && result.accepted.isNotEmpty()) followGroup(listId)
             result.conflicts.forEach { _conflicts.tryEmit(it) }
             RemoteResult(result.accepted.map { list.items[it.id] to it }, newAudit)
         }

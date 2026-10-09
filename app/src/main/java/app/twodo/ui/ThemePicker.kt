@@ -76,7 +76,7 @@ internal fun ThemePickerDialog(
 
 /** A miniature of the theme: its background, a fake row in its text colour, and its accent. */
 @Composable
-private fun ThemeSwatch(theme: AppTheme, label: String, selected: Boolean, icon: ImageVector?, onClick: () -> Unit) {
+internal fun ThemeSwatch(theme: AppTheme, label: String, selected: Boolean, icon: ImageVector?, onClick: () -> Unit) {
     val colors = theme.colors
     val shape = RoundedCornerShape(12.dp)
     Column(Modifier.clip(shape).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {

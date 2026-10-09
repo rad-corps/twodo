@@ -18,7 +18,11 @@ object ShareLink {
 
     fun build(list: TodoList): String =
         "${WEB_PREFIX}id=${list.id}&name=${URLEncoder.encode(list.name, "UTF-8")}&k=${list.secret}" +
-            if (list.kind == SpaceKind.DIARY) "&t=diary" else ""
+            when (list.kind) {
+                SpaceKind.DIARY -> "&t=diary"
+                SpaceKind.GROUP -> "&t=group"
+                SpaceKind.LIST -> ""
+            }
 
     /** Message text to send along with the link; [appName] is the product name. */
     fun message(list: TodoList, appName: String): String = "Join “${list.name}” on $appName: ${build(list)}"
@@ -32,7 +36,11 @@ object ShareLink {
         }.toMap()
         val id = params["id"]?.takeIf { it.isNotBlank() } ?: return null
         val secret = params["k"]?.takeIf { ListKeys.isValidSecret(it) } ?: return null
-        val kind = if (params["t"] == "diary") SpaceKind.DIARY else SpaceKind.LIST
+        val kind = when (params["t"]) {
+            "diary" -> SpaceKind.DIARY
+            "group" -> SpaceKind.GROUP
+            else -> SpaceKind.LIST
+        }
         return Invite(id, params["name"].orEmpty().ifBlank { "Shared list" }, secret, kind)
     }
 }

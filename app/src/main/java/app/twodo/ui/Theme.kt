@@ -15,7 +15,7 @@ class AppTheme(val id: String, val name: String, val dark: Boolean, val colors: 
  * Builds a quiet Material colour scheme from a few palette colours: [background] with [text], one
  * [accent], and the palette's own raised surface and muted text for secondary elements.
  */
-private fun theme(
+internal fun theme(
     id: String,
     name: String,
     dark: Boolean,
@@ -97,6 +97,22 @@ val THEMES: List<AppTheme> = listOf(
 const val DEFAULT_THEME = "twodo-dark"
 
 fun themeById(id: String?): AppTheme = THEMES.firstOrNull { it.id == id } ?: THEMES.first()
+
+/** This theme with [accent] in place of its own accent colour (and the colours derived from it). */
+fun AppTheme.withAccent(accent: Color): AppTheme {
+    val c = colors
+    val container = lerp(c.background, accent, if (dark) 0.22f else 0.16f)
+    val onContainer = lerp(c.onBackground, accent, 0.35f)
+    val onAccent = if (dark) c.background else Color.White
+    return AppTheme(
+        id, name, dark,
+        c.copy(
+            primary = accent, onPrimary = onAccent, primaryContainer = container, onPrimaryContainer = onContainer,
+            secondary = accent, onSecondary = onAccent, secondaryContainer = container, onSecondaryContainer = onContainer,
+            inversePrimary = lerp(accent, c.background, 0.4f),
+        ),
+    )
+}
 
 @Composable
 fun TwoDoTheme(theme: AppTheme, content: @Composable () -> Unit) {
