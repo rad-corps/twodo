@@ -1,4 +1,4 @@
-# TwoDo
+# Intack
 
 Shared to-do lists and diaries for Android that sync directly between phones — no account, no server
 of our own, no subscription. See [docs/PLAN.md](docs/PLAN.md) for the design and
@@ -6,7 +6,7 @@ of our own, no subscription. See [docs/PLAN.md](docs/PLAN.md) for the design and
 
 ## Install
 
-TwoDo is free to install from this repository's [Releases](../../releases). Android 8.0 or newer,
+Intack is free to install from this repository's [Releases](../../releases). Android 8.0 or newer,
 64-bit ARM (any phone from the last several years).
 
 **Recommended — stay updated with [Obtainium](https://obtainium.imranr.dev):**
@@ -15,7 +15,11 @@ TwoDo is free to install from this repository's [Releases](../../releases). Andr
 2. In Obtainium tap **Add App**, paste `https://github.com/rad-corps/twodo` and tap **Add**.
 3. Tap **Install**. Obtainium checks for new releases and offers updates.
 
-**Or manually:** download the latest `TwoDo-v*.apk` from [Releases](../../releases) and open it on your
+**Had it when it was called TwoDo?** The rename to Intack also gave the app a new ID, so it installs as a
+separate app rather than updating the old one. Install Intack, re-join your lists from another phone
+(Share › QR code or link), then uninstall TwoDo.
+
+**Or manually:** download the latest `Intack-v*.apk` from [Releases](../../releases) and open it on your
 phone (allow "Install unknown apps" when asked).
 
 ## Build
@@ -75,5 +79,5 @@ Every list and diary keeps a shared **History** (⋮ menu) of who changed what, 
 
 ## Licence
 
-[GPL-3.0](LICENSE). You're free to use, study, change and share TwoDo; if you distribute a modified
+[GPL-3.0](LICENSE). You're free to use, study, change and share Intack; if you distribute a modified
 version, it must be under the same licence with its source available.
