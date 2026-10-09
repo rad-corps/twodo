@@ -54,6 +54,16 @@ class Identity(context: Context) {
         get() = prefs.getString("lastView", null)
         set(value) = prefs.edit { putString("lastView", value) }
 
+    /** Opt-in: after a crash, offer to email a report to the developer. Off unless the user turns it on. */
+    var offerCrashReports: Boolean
+        get() = prefs.getBoolean("offerCrashReports", false)
+        set(value) = prefs.edit { putBoolean("offerCrashReports", value) }
+
+    /** Newest crash the user has already been asked about, so each is offered once. */
+    var crashesSeenUpTo: Long
+        get() = prefs.getLong("crashesSeenUpTo", 0)
+        set(value) = prefs.edit { putLong("crashesSeenUpTo", value) }
+
     var backgroundSync: Boolean
         get() = prefs.getBoolean("backgroundSync", true)
         set(value) = prefs.edit { putBoolean("backgroundSync", value) }

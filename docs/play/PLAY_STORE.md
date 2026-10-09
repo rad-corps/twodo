@@ -102,7 +102,11 @@ through the adults' phones). Not designed for children.
   nothing. List contents leave the phone only **end-to-end encrypted** (WebRTC DTLS plus AES-GCM with the
   list's key) to the people the user chose to share with, via relays that can't read them — Play's
   guidance treats end-to-end encrypted data that only the sender and recipients can read as not
-  collected. No analytics, crash reporting, ads or account.
+  collected. No analytics, ads or account.
+- *Crash reports* are opt-in (Settings) and go only by email the user sends from their own mail app.
+  Play's guidance on user-initiated transfers through another app is worth checking at submission: if
+  it counts, declare **App info and performance › Crash logs** as collected, optional, for analytics
+  (app functionality), not shared, and the user's email address as received with it.
 - *Is all user data encrypted in transit?* **Yes.**
 - *Do you provide a way for users to request that their data be deleted?* Data is only on users' devices:
   remove a list in the app or uninstall.

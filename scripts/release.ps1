@@ -53,6 +53,9 @@ if ($LASTEXITCODE) {
 $apk = "app/build/outputs/apk/release/TwoDo-v$Version.apk"
 Copy-Item app/build/outputs/apk/release/app-release.apk $apk -Force
 $bundle = "app/build/outputs/bundle/release/TwoDo-v$Version.aab"
+# Keep this version's R8 map: without it, crash reports from this version can't be decoded (scripts/retrace.ps1).
+New-Item -ItemType Directory -Force "$HOME/.twodo/mappings" | Out-Null
+Copy-Item app/build/outputs/mapping/release/mapping.txt "$HOME/.twodo/mappings/v$Version-mapping.txt" -Force
 Copy-Item app/build/outputs/bundle/release/app-release.aab $bundle -Force
 
 git commit -q -am "Release v$Version"

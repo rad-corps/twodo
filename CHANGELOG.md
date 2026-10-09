@@ -5,6 +5,11 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+- **Optional crash reports.** Turn on Settings › Offer to email crash reports, and if the app closes
+  unexpectedly it offers to email a report to the developer. It opens in your email app so you see what's
+  sent (versions and where the error happened — nothing from your lists) and only goes if you send it.
+- Settings switches now toggle when you tap anywhere on their row.
+
 ## v0.6.3 — 2026-10-09
 
 - Calendars now open on the **Schedule** — everything coming up on one page. Tap a day's heading (or

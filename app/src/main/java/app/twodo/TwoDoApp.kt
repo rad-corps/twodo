@@ -1,6 +1,7 @@
 package app.twodo
 
 import android.app.Application
+import app.twodo.data.CrashLog
 import app.twodo.data.Identity
 import app.twodo.data.ListRepository
 import app.twodo.sync.ListEvent
@@ -44,6 +45,7 @@ class TwoDoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         identity = Identity(this)
         repo = ListRepository(File(filesDir, "lists"), identity)
         sync = SyncManager(this, repo, identity)

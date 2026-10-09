@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -108,6 +109,7 @@ import app.twodo.R
 import app.twodo.BuildConfig
 import app.twodo.TwoDoApp
 import app.twodo.data.ALL_CALENDARS
+import app.twodo.data.CrashLog
 import app.twodo.data.OTHER_LISTS
 import app.twodo.model.calendarRef
 import app.twodo.model.sharedLook
@@ -154,6 +156,9 @@ fun TwoDoRoot(
     var settings by remember { mutableStateOf(false) }
     // Someone who opens an invite link straight away skips the welcome screen, so ask their name then.
     var nameAsked by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Crashes since last time, offered for emailing only if the user opted in.
+    var crashes by remember { mutableStateOf(if (app.identity.offerCrashReports) CrashLog.unseen(context, app.identity) else emptyList()) }
 
     fun show(viewId: String) {
         view = viewId
@@ -258,6 +263,30 @@ fun TwoDoRoot(
             app.setName(name)
             nameAsked = true
         }
+    }
+    if (crashes.isNotEmpty()) {
+        val brand = stringResource(R.string.brand_name)
+        fun done() {
+            CrashLog.markSeen(context, app.identity)
+            crashes = emptyList()
+        }
+        AlertDialog(
+            onDismissRequest = ::done,
+            title = { Text("$brand closed unexpectedly") },
+            text = {
+                Text(
+                    "Email a report to the developer so it can be fixed? It opens in your email app so you can see what's sent: " +
+                        "the app and phone version, and where in the app it went wrong — nothing from your lists or calendar.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!CrashLog.email(context, crashes)) Toast.makeText(context, "No email app found", Toast.LENGTH_LONG).show()
+                    done()
+                }) { Text("Email report") }
+            },
+            dismissButton = { TextButton(onClick = ::done) { Text("Not now") } },
+        )
     }
     if (newGroup) {
         NewGroupDialog(others, onDismiss = { newGroup = false }) { name, calendarId, listIds ->
@@ -849,6 +878,9 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
     }
     var notifyChanges by remember { mutableStateOf(app.identity.notifyChanges) }
     var textScale by remember { mutableStateOf(app.identity.textScale) }
+    var offerCrashReports by remember { mutableStateOf(app.identity.offerCrashReports) }
+    val context = LocalContext.current
+    var crashReports by remember { mutableStateOf(CrashLog.reports(context)) }
     var showLog by remember { mutableStateOf(false) }
     var direct by remember { mutableStateOf(app.identity.directConnections) }
     if (showLog) return ConnectionLogDialog(onDismiss = { showLog = false })
@@ -856,7 +888,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("Settings") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -898,7 +930,7 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().toggleable(value = notifyChanges, onValueChange = { notifyChanges = it }), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Notify me about changes")
                         Text(
@@ -907,10 +939,10 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = notifyChanges, onCheckedChange = { notifyChanges = it })
+                    Switch(checked = notifyChanges, onCheckedChange = null)
                 }
                 Spacer(Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().toggleable(value = background, onValueChange = { background = it }), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Sync in background")
                         Text(
@@ -919,13 +951,41 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = background, onCheckedChange = { background = it })
+                    Switch(checked = background, onCheckedChange = null)
                 }
                 if (BuildConfig.DEBUG) {
                     Spacer(Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Direct connections (debug)", Modifier.weight(1f))
                         Switch(checked = direct, onCheckedChange = { direct = it })
+                    }
+                    TextButton(onClick = { error("Test crash from Settings (debug)") }, contentPadding = PaddingValues(0.dp)) {
+                        Text("Crash now (debug)")
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth().toggleable(value = offerCrashReports, onValueChange = { offerCrashReports = it }), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Offer to email crash reports")
+                        Text(
+                            "If the app closes unexpectedly, ask to email a report to the developer. You see it before it's sent.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = offerCrashReports, onCheckedChange = null)
+                }
+                if (crashReports.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = {
+                            if (!CrashLog.email(context, crashReports)) Toast.makeText(context, "No email app found", Toast.LENGTH_LONG).show()
+                            CrashLog.markSeen(context, app.identity)
+                        }, contentPadding = PaddingValues(0.dp)) { Text("Email crash reports (${crashReports.size})") }
+                        Spacer(Modifier.width(16.dp))
+                        TextButton(onClick = {
+                            CrashLog.clear(context)
+                            crashReports = emptyList()
+                        }) { Text("Delete them") }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -937,6 +997,11 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                 if (name.isNotBlank()) app.setName(name)
                 app.setTheme(themeId)
                 app.identity.notifyChanges = notifyChanges
+                if (offerCrashReports && !app.identity.offerCrashReports) {
+                    // Turning it on shouldn't immediately pop up old crashes; they're in Settings.
+                    CrashLog.markSeen(context, app.identity)
+                }
+                app.identity.offerCrashReports = offerCrashReports
                 if (direct != app.identity.directConnections) {
                     app.identity.directConnections = direct
                     app.sync.refresh()
