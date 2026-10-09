@@ -39,9 +39,9 @@ Add-Content CHANGELOG.md ''
 
 # versionName comes from the argument; versionCode just has to keep increasing.
 $props = Get-Content gradle.properties
-$code = 1 + [int]($props | Select-String '^intack\.versionCode=(\d+)').Matches[0].Groups[1].Value
-$props = $props -replace '^intack\.versionName=.*', "intack.versionName=$Version" `
-                -replace '^intack\.versionCode=.*', "intack.versionCode=$code"
+$code = 1 + [int]($props | Select-String '^twodo\.versionCode=(\d+)').Matches[0].Groups[1].Value
+$props = $props -replace '^twodo\.versionName=.*', "twodo.versionName=$Version" `
+                -replace '^twodo\.versionCode=.*', "twodo.versionCode=$code"
 Set-Content gradle.properties $props
 
 ./gradlew testDebugUnitTest assembleRelease bundleRelease
@@ -50,19 +50,19 @@ if ($LASTEXITCODE) {
     throw 'Build failed; version and changelog left unchanged.'
 }
 
-$apk = "app/build/outputs/apk/release/Intack-v$Version.apk"
+$apk = "app/build/outputs/apk/release/TwoDo-v$Version.apk"
 Copy-Item app/build/outputs/apk/release/app-release.apk $apk -Force
-$bundle = "app/build/outputs/bundle/release/Intack-v$Version.aab"
+$bundle = "app/build/outputs/bundle/release/TwoDo-v$Version.aab"
 Copy-Item app/build/outputs/bundle/release/app-release.aab $bundle -Force
 
 git commit -q -am "Release v$Version"
-git tag -a "v$Version" -m "Intack v$Version"
+git tag -a "v$Version" -m "TwoDo v$Version"
 git push origin main "v$Version"
 if ($LASTEXITCODE) { throw 'Push failed; the release commit and tag are local only.' }
 
 $notesFile = New-TemporaryFile
 Set-Content $notesFile $notes
-gh release create "v$Version" $apk --title "Intack v$Version" --notes-file $notesFile
+gh release create "v$Version" $apk --title "TwoDo v$Version" --notes-file $notesFile
 Remove-Item $notesFile
 if ($LASTEXITCODE) { throw 'Creating the GitHub release failed; retry with: gh release create ...' }
 Write-Host "Released v$Version (versionCode $code)."

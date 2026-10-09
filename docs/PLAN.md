@@ -1,4 +1,4 @@
-# Intack — plan
+# TwoDo — plan
 
 A to-do list app for Android whose lists are shared directly between phones.
 No account, no server we run, no subscription.
@@ -57,7 +57,7 @@ online. So every list also uses **free public Nostr relays** (`RELAYS` in `Relay
 
 ### Security
 
-- Each list has a random 256-bit secret, carried in the QR code / link (`https://intack.app/join/#id=…&name=…&k=…`).
+- Each list has a random 256-bit secret, carried in the QR code / link (`twodo://join?id=…&name=…&k=…`).
 - Tracker room id = hash of the secret (the secret itself never leaves the device except via the QR code).
 - All sync messages are AES-256-GCM encrypted with a key derived from the secret, on top of WebRTC's DTLS.
   A peer that can't decrypt is dropped.

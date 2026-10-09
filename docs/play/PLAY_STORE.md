@@ -1,59 +1,50 @@
 # Google Play — setup notes and drafts
 
 Everything needed to get the app onto Play's **internal testing** track (up to 100 testers by email,
-no public listing), and later production. The app is called **Intack** (app ID `app.intack`, site
-`https://intack.app`).
+no public listing), and later production. The product name isn't decided — "TwoDo" below is a
+placeholder; see [Name ideas](#name-ideas).
 
 ## Checklist
 
 **You (once):**
 1. Create a Google Play developer account (one-off US$25) and complete identity verification.
-2. Create the app in Play Console: name, default language, *App* (not game), *Free* for now.
-3. **App signing:** when asked, choose to **use your own key** and upload the existing one from
+2. **Decide the app ID first** (see [App ID](#app-id--decide-before-the-first-upload)) — it can't change after the first upload.
+3. Create the app in Play Console: name, default language, *App* (not game), *Free* for now.
+4. **App signing:** when asked, choose to **use your own key** and upload the existing one from
    `~/.twodo/release.jks` (Play Console walks you through exporting it with its PEPK tool). This keeps
    Play and GitHub builds interchangeable, so people can switch without losing lists.
-4. Testing › Internal testing: create an email list with the testers' Google accounts, upload the
+5. Testing › Internal testing: create an email list with the testers' Google accounts, upload the
    `.aab` that `scripts/release.ps1` prints, roll out, and send testers the opt-in link.
 
 **Forms (answers drafted below):** app access, ads, content rating, target audience, data safety,
 privacy policy URL, foreground service declaration, store listing.
 
 **Assets:** icon 512×512 (`docs/play/icon-512.png`, a placeholder from the launcher icon), phone
-screenshots (`docs/play/screenshots/`, 1080×2400), feature graphic 1024×500
-(`docs/play/feature-graphic.png`, rendered from `feature-graphic.html`; re-render after retaking the
-screenshots — the command is at the top of that file).
+screenshots (`docs/play/screenshots/`, 1080×2400), feature graphic 1024×500 (needed for production;
+make it once the name is chosen).
 
-The screenshots use demo family data. To retake them (e.g. after UI changes): start two
+The screenshots use demo family data and show the current name, so retake them after renaming: start two
 emulators with the debug build installed and run `bash scripts/screenshots.sh` (it replaces the debug
 app's data on both; `ADB=` can point at adb if it isn't on the PATH).
 
 For production later: new personal developer accounts must first run a **closed test with at least 12
 testers for 14 days** (check the current rule in Play Console); internal testing doesn't need that.
 
-## App ID
+## App ID — decide before the first upload
 
-`app.intack` (it was `app.twodo` before the rename). It's shown in the Play Store URL and **can never
-change** once uploaded to Play: a different ID is a different app, and installs don't carry over. The
-display name can still change freely.
+The app ID is currently `app.twodo`. It's shown in the Play Store URL and **can never change** for a
+Play listing. Changing it later means a new app: everyone would have to install it fresh and their
+lists wouldn't carry over. It's invisible otherwise, so the name can change freely while the ID stays.
 
-## App links
-
-Share links (`https://intack.app/join/#…`) open the app directly because the manifest's `autoVerify`
-filter is backed by `docs/.well-known/assetlinks.json`. That file lists the SHA-256 fingerprint of the
-key that signs the installed app. With Play App Signing that's **Play's app signing key** (Play Console ›
-Test and release › App integrity shows it), which is the same as `release.jks` if you upload your own key
-as above. If Play generates a key instead, add its fingerprint to the list alongside `release.jks`'s, so
-both GitHub and Play installs verify. Get the local one with:
-
-```
-keytool -list -v -keystore ~/.twodo/release.jks | grep SHA256
-```
+If you'd like a neutral ID (e.g. `com.<you>.family` or matching a domain you own), change it **before**
+the first Play upload. Only GitHub/Obtainium installs exist today; they'd need a one-time reinstall
+(lists can be re-joined from the other phone).
 
 ## Store listing (drafts)
 
 Written for people who just want a shared family list and calendar, without technical terms.
 
-**App name** (max 30 chars): Intack
+**App name** (max 30 chars): *TBD*
 
 **Short description** (max 80 chars):
 
@@ -87,9 +78,9 @@ Written for people who just want a shared family list and calendar, without tech
 **Category:** Productivity (alternative: Lifestyle). **Tags:** shopping list, to-do, family calendar.
 
 **Contact details:** an email address is required (Play shows it publicly). **Website:**
-`https://intack.app`
+`https://rad-corps.github.io/twodo/` (or a new site once named).
 
-**Privacy policy URL:** `https://intack.app/privacy/`
+**Privacy policy URL:** `https://rad-corps.github.io/twodo/privacy/`
 
 ## App content forms
 
@@ -131,3 +122,25 @@ through the adults' phones). Not designed for children.
   15-minute background check plus relay delivery (which already works while the app is closed).
 
 **Camera permission:** used only to scan QR codes (declared by the QR library).
+
+## Name ideas
+
+The pitch: a family organiser like Cozi, but pay-once and your data stays on your phones. Names that say
+"family / home / ours" and "kept, not rented" without jargon. Check each on Google Play search and
+trademark databases before deciding.
+
+| Name | Why |
+|---|---|
+| **Kinboard** | Family (kin) + the fridge noticeboard |
+| **Hearthlist** | Home and hearth; warm, a little old-fashioned in a good way |
+| **Homeroom** | The family's shared room |
+| **Kept** | "Your lists, kept" — hints at ownership; short |
+| **Our Fridge** | Everyone knows the fridge door is where the family plans live |
+| **Kitchen Table** | Where families sort out the week |
+| **Nestlist** | Home/nest, friendly |
+| **Ours** | Ownership in one word (likely hard to get) |
+| **Famlist** | Plain and descriptive |
+| **Tribe Book** | Family + diary |
+
+Whatever it is: update `brand_name` in `app/src/main/res/values/strings.xml` (and the debug label next to
+it), the join/privacy pages under `docs/`, and the store listing.

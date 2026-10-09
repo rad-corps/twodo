@@ -6,7 +6,7 @@
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 ADB=${ADB:-adb}
-SHOT=${SHOT:-emulator-5554}; PEER=${PEER:-emulator-5556}; P=app.intack.debug
+SHOT=${SHOT:-emulator-5554}; PEER=${PEER:-emulator-5556}; P=app.twodo.debug
 OUT=${1:-docs/play/screenshots}
 TMP=$(mktemp -d)
 # On Windows (Git Bash), Python needs the Windows form of the temp path.
@@ -27,8 +27,8 @@ load() { # serial who
 }
 load $PEER sarah
 load $SHOT me
-$ADB -s $PEER shell am start -n $P/app.intack.MainActivity >/dev/null
-$ADB -s $SHOT shell am start -n $P/app.intack.MainActivity >/dev/null
+$ADB -s $PEER shell am start -n $P/app.twodo.MainActivity >/dev/null
+$ADB -s $SHOT shell am start -n $P/app.twodo.MainActivity >/dev/null
 # Clean status bar: fixed time, full battery and signal, no notifications.
 $ADB -s $SHOT shell settings put global sysui_demo_allowed 1
 # The clock shows the real time, so it matches the "5 min ago" and History times in the demo data.

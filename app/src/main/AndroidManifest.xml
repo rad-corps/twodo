@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
-        android:name=".IntackApp"
+        android:name=".TwoDoApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
@@ -29,16 +29,14 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="intack" android:host="join" />
-                <!-- From before the rename to Intack. -->
                 <data android:scheme="twodo" android:host="join" />
             </intent-filter>
-            <!-- Web share links (https://intack.app/join/#...), verified by docs/.well-known/assetlinks.json. -->
+            <!-- Web share links (https://rad-corps.github.io/twodo/join/#...). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="intack.app" android:pathPrefix="/join" />
+                <data android:scheme="https" android:host="rad-corps.github.io" android:pathPrefix="/twodo/join" />
             </intent-filter>
             <!-- Share a screenshot of a list's QR code to the app to join it. -->
             <intent-filter android:label="@string/join_from_image">
