@@ -19,8 +19,9 @@ no public listing), and later production. The app is called **Intack** (app ID `
 privacy policy URL, foreground service declaration, store listing.
 
 **Assets:** icon 512×512 (`docs/play/icon-512.png`, a placeholder from the launcher icon), phone
-screenshots (`docs/play/screenshots/`, 1080×2400), feature graphic 1024×500 (needed for production;
-make it once the name is chosen).
+screenshots (`docs/play/screenshots/`, 1080×2400), feature graphic 1024×500
+(`docs/play/feature-graphic.png`, rendered from `feature-graphic.html`; re-render after retaking the
+screenshots — the command is at the top of that file).
 
 The screenshots use demo family data and still show the old name (TwoDo), so retake them: start two
 emulators with the debug build installed and run `bash scripts/screenshots.sh` (it replaces the debug
