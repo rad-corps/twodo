@@ -142,17 +142,23 @@ internal fun DiaryBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifi
         }
     }
 
-    var schedule by rememberSaveable { mutableStateOf(app.identity.scheduleView) }
+    // Calendars open on the schedule — everything coming up — with Day a tap away.
+    var schedule by rememberSaveable(list.id) { mutableStateOf(true) }
 
     Column(modifier.fillMaxSize()) {
         JoiningBanner(list, status)
-        CalendarModeSwitch(schedule) {
-            schedule = it
-            app.identity.scheduleView = it
-        }
+        CalendarModeSwitch(schedule) { schedule = it }
         if (schedule) {
-            val label = list.name
-            ScheduleView(app, listOf(ScheduleSource(list, label, MaterialTheme.colorScheme.primary)), Modifier.weight(1f))
+            ScheduleView(
+                app,
+                listOf(ScheduleSource(list, list.name, MaterialTheme.colorScheme.primary)),
+                Modifier.weight(1f),
+                // Tapping a day's heading opens that day.
+                onDay = { day ->
+                    schedule = false
+                    scope.launch { pager.scrollToPage(pageOf(day)) }
+                },
+            )
             return@Column
         }
         DayHeader(
@@ -199,12 +205,12 @@ internal fun DiaryBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifi
     }
 }
 
-/** Day (one day at a time, swipe between days) or Schedule (everything coming up on one page). */
+/** Schedule (everything coming up on one page) or Day (one day at a time, swipe between days). */
 @Composable
 private fun CalendarModeSwitch(schedule: Boolean, onChange: (Boolean) -> Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        SegmentedButton(selected = !schedule, onClick = { onChange(false) }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("Day") }
-        SegmentedButton(selected = schedule, onClick = { onChange(true) }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text("Schedule") }
+        SegmentedButton(selected = schedule, onClick = { onChange(true) }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("Schedule") }
+        SegmentedButton(selected = !schedule, onClick = { onChange(false) }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text("Day") }
     }
 }
 

@@ -5,6 +5,10 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+- Calendars now open on the **Schedule** — everything coming up on one page. Tap a day's heading (or
+  **Day**) to see a single day.
+- A new calendar starts with one entry marking when it was created.
+
 ## v0.6.2 — 2026-10-09
 
 - The calendar's "Add to …" box is now at the bottom of the screen, below the day's entries, and

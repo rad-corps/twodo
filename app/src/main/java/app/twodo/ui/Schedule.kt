@@ -68,7 +68,7 @@ private val scheduleDayWithYear = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy"
  * Past days are one tap away at the top.
  */
 @Composable
-internal fun ScheduleView(app: TwoDoApp, sources: List<ScheduleSource>, modifier: Modifier = Modifier) {
+internal fun ScheduleView(app: TwoDoApp, sources: List<ScheduleSource>, modifier: Modifier = Modifier, onDay: ((LocalDate) -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val is24Hour = remember { DateFormat.is24HourFormat(context) }
@@ -117,7 +117,7 @@ internal fun ScheduleView(app: TwoDoApp, sources: List<ScheduleSource>, modifier
             }
         }
         days.forEach { (date, entries) ->
-            item(key = "day-$date") { DayHeading(date, today) }
+            item(key = "day-$date") { DayHeading(date, today, onDay) }
             items(entries, key = { "${it.source.list.id}/${it.item.id}" }) { entry ->
                 Row(
                     Modifier.fillMaxWidth().clickable { editing = entry.source.list.id to entry.item.id }
@@ -176,7 +176,7 @@ internal fun ScheduleView(app: TwoDoApp, sources: List<ScheduleSource>, modifier
 
 /** "Today · Friday 9 October", "Tomorrow · Saturday 10 October", "Wednesday 14 October". */
 @Composable
-private fun DayHeading(date: LocalDate, today: LocalDate) {
+private fun DayHeading(date: LocalDate, today: LocalDate, onClick: ((LocalDate) -> Unit)?) {
     val formatted = date.format(if (date.year == today.year) scheduleDay else scheduleDayWithYear)
     val relative = when (date) {
         today -> "Today · "
@@ -186,7 +186,8 @@ private fun DayHeading(date: LocalDate, today: LocalDate) {
     }
     Text(
         relative + formatted,
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable { onClick(date) } else Modifier)
+            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp),
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.SemiBold,
         color = if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,

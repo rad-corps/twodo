@@ -87,9 +87,24 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         val list = TodoList(
             UUID.randomUUID().toString(), name.trim().ifEmpty { fallback }, ListKeys.newSecret(),
             createdHere = true, kind = kind, groupId = groupId,
-        )
+        ).let { if (kind == SpaceKind.DIARY) it.copy(items = birthEntry(it).let { e -> mapOf(e.id to e) }) else it }
         save(list)
         return list
+    }
+
+    /** A new calendar's first entry: when it was made ("Calendar created", today, at the time). */
+    private fun birthEntry(calendar: TodoList): Item {
+        val now = System.currentTimeMillis()
+        val time = java.time.LocalTime.now()
+        return Item(
+            id = UUID.randomUUID().toString(),
+            text = "${calendar.name} created",
+            createdAt = now,
+            version = Version(now, identity.deviceId),
+            editor = identity.deviceName,
+            date = LocalDate.now().toString(),
+            time = "%02d:%02d".format(time.hour, time.minute),
+        )
     }
 
     /**

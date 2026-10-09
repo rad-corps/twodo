@@ -54,11 +54,6 @@ class Identity(context: Context) {
         get() = prefs.getString("lastView", null)
         set(value) = prefs.edit { putString("lastView", value) }
 
-    /** Calendars open on the schedule (everything coming up) rather than one day. */
-    var scheduleView: Boolean
-        get() = prefs.getBoolean("scheduleView", false)
-        set(value) = prefs.edit { putBoolean("scheduleView", value) }
-
     var backgroundSync: Boolean
         get() = prefs.getBoolean("backgroundSync", true)
         set(value) = prefs.edit { putBoolean("backgroundSync", value) }
