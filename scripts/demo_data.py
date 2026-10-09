@@ -21,8 +21,10 @@ ME, SARAH, TOM = "demo-device-me", "demo-device-sarah", "demo-device-tom"
 NAMES = {ME: "Me", SARAH: "Sarah", TOM: "Tom"}
 
 
-def secret(seed):
-    return base64.urlsafe_b64encode(seed.encode().ljust(32, b"x")[:32]).decode().rstrip("=")
+def secret():
+    # Fresh every run: a fixed key would put each run on the same relay topic, and the relays would
+    # replay earlier runs' edits and members into the screenshots.
+    return base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")
 
 
 def describe(item):
@@ -35,7 +37,7 @@ def describe(item):
 
 def make(name, kind, theme, entries):
     """entries: (text, by, minutes_ago, extra) — extra holds checked/date/time."""
-    lid = str(uuid.uuid5(uuid.NAMESPACE_URL, "demo/" + name))
+    lid = str(uuid.uuid4())
     items, audit = {}, {}
     for pos, (text, by, ago, extra) in enumerate(entries):
         iid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"demo/{name}/{text}"))
@@ -46,7 +48,7 @@ def make(name, kind, theme, entries):
         items[iid] = item
         aid = f"{iid}/{ts}/{by}"
         audit[aid] = {"id": aid, "itemId": iid, "ts": ts, "by": by, "byName": NAMES[by], "description": describe(item)}
-    data = {"id": lid, "name": name, "secret": secret(name), "items": items, "audit": audit,
+    data = {"id": lid, "name": name, "secret": secret(), "items": items, "audit": audit,
             "members": {SARAH: "Sarah", TOM: "Tom"}, "createdHere": True, "fullSynced": True, "kind": kind}
     return data, theme
 

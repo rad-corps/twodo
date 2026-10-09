@@ -23,7 +23,7 @@ screenshots (`docs/play/screenshots/`, 1080×2400), feature graphic 1024×500
 (`docs/play/feature-graphic.png`, rendered from `feature-graphic.html`; re-render after retaking the
 screenshots — the command is at the top of that file).
 
-The screenshots use demo family data and still show the old name (TwoDo), so retake them: start two
+The screenshots use demo family data. To retake them (e.g. after UI changes): start two
 emulators with the debug build installed and run `bash scripts/screenshots.sh` (it replaces the debug
 app's data on both; `ADB=` can point at adb if it isn't on the PATH).
 
