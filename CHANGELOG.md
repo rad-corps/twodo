@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.0 — 2026-10-09
+
 **Groups.** Share one calendar and your lists with the same people — your household, say — by
 inviting them once. A group has three tabs: **Calendar**, **Lists** and **People**.
 - Starting a group gives it a calendar and a shopping list; add more lists any time. Everyone in the
