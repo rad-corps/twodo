@@ -52,6 +52,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MoreVert
@@ -156,6 +157,7 @@ fun TwoDoRoot(
     var newGroup by remember { mutableStateOf(false) }
     var joining by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
+    var notifications by rememberSaveable { mutableStateOf(false) }
     // Someone who opens an invite link straight away skips the welcome screen, so ask their name then.
     var nameAsked by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
@@ -234,6 +236,7 @@ fun TwoDoRoot(
 
     LookSurface(look) {
         when {
+            notifications -> NotificationSettingsScreen(app, onBack = { notifications = false })
             lists.isEmpty() -> WelcomeScreen(
                 app,
                 onStart = { name -> scope.launch { show(app.repo.createGroup(name).id) } },
@@ -302,7 +305,12 @@ fun TwoDoRoot(
             scope.launch { open(app.repo.joinList(invite).id) }
         }
     }
-    if (settings) SettingsDialog(app, onDismiss = { settings = false })
+    if (settings) {
+        SettingsDialog(app, onDismiss = { settings = false }, onNotifications = {
+            settings = false
+            notifications = true
+        })
+    }
 }
 
 @Composable
@@ -875,7 +883,7 @@ private fun JoinDialog(onDismiss: () -> Unit, onJoin: (Invite) -> Unit) {
 }
 
 @Composable
-private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
+private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit, onNotifications: () -> Unit) {
     var name by remember { mutableStateOf(if (app.identity.hasName) app.identity.deviceName else "") }
     var background by remember { mutableStateOf(app.identity.backgroundSync) }
     var themeId by remember { mutableStateOf(app.identity.themeId) }
@@ -887,7 +895,6 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
             onDismiss = { pickingTheme = false },
         ) { id -> if (id != null) themeId = id }
     }
-    var notifyChanges by remember { mutableStateOf(app.identity.notifyChanges) }
     var textScale by remember { mutableStateOf(app.identity.textScale) }
     var offerCrashReports by remember { mutableStateOf(app.identity.offerCrashReports) }
     val context = LocalContext.current
@@ -941,16 +948,19 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(16.dp))
-                Row(Modifier.fillMaxWidth().toggleable(value = notifyChanges, onValueChange = { notifyChanges = it }), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onNotifications() }.padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Notify me about changes")
+                        Text("Notifications")
                         Text(
-                            "When others change a list while ${stringResource(R.string.brand_name)} is closed.",
+                            "Daily schedule, reminders, and what others change",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = notifyChanges, onCheckedChange = null)
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.outline)
                 }
                 Spacer(Modifier.height(16.dp))
                 Row(Modifier.fillMaxWidth().toggleable(value = background, onValueChange = { background = it }), verticalAlignment = Alignment.CenterVertically) {
@@ -1007,7 +1017,6 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit) {
             TextButton(onClick = {
                 if (name.isNotBlank()) app.setName(name)
                 app.setTheme(themeId)
-                app.identity.notifyChanges = notifyChanges
                 if (offerCrashReports && !app.identity.offerCrashReports) {
                     // Turning it on shouldn't immediately pop up old crashes; they're in Settings.
                     CrashLog.markSeen(context, app.identity)

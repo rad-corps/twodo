@@ -4,6 +4,8 @@ import android.app.Application
 import app.twodo.data.CrashLog
 import app.twodo.data.Identity
 import app.twodo.data.ListRepository
+import app.twodo.model.SpaceKind
+import app.twodo.sync.CalendarAlerts
 import app.twodo.sync.ListEvent
 import app.twodo.sync.Notifications
 import app.twodo.sync.SyncManager
@@ -12,10 +14,13 @@ import app.twodo.sync.SyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import java.io.File
 
+@OptIn(FlowPreview::class)
 class TwoDoApp : Application() {
     lateinit var identity: Identity
         private set
@@ -53,21 +58,36 @@ class TwoDoApp : Application() {
         textScale = MutableStateFlow(identity.textScale)
         Notifications.createChannels(this)
         SyncWorker.schedule(this)
+        // Calendar changes (from anyone) can move the next reminder; settle for a moment, then set it.
         scope.launch {
-            repo.conflicts.collect { if (visibleActivities == 0) Notifications.showConflict(this@TwoDoApp, it) }
+            repo.lists.debounce(2_000).collect { CalendarAlerts.reschedule(this@TwoDoApp) }
+        }
+        scope.launch {
+            repo.conflicts.collect { if (visibleActivities == 0 && identity.notifyConflicts) Notifications.showConflict(this@TwoDoApp, it) }
         }
         scope.launch {
             sync.events.collect { event ->
                 when (event) {
                     // People coming and going always gets a pull-down notification.
-                    is ListEvent.Joined, is ListEvent.Left -> Notifications.showPeople(this@TwoDoApp, event)
-                    // Changes are highlighted in the app when it's open; otherwise one quiet notification per list.
-                    is ListEvent.Changed ->
-                        if (visibleActivities == 0 && identity.notifyChanges) Notifications.addChanges(this@TwoDoApp, event)
+                    is ListEvent.Joined -> if (identity.notifyJoined) Notifications.showPeople(this@TwoDoApp, event)
+                    is ListEvent.Left -> if (identity.notifyLeft) Notifications.showPeople(this@TwoDoApp, event)
+                    // Changes are highlighted in the app when it's open; otherwise one notification per list,
+                    // with just the kinds of change this phone wants to hear about.
+                    is ListEvent.Changed -> if (visibleActivities == 0) Notifications.addChanges(this@TwoDoApp, event, wantedLines(event))
                     // Shown in the app (it's the joining phone, so the user is looking at it).
                     is ListEvent.JoinedList -> Unit
                 }
             }
+        }
+    }
+
+    /** The lines of [event] this phone's notification settings want. */
+    private fun wantedLines(event: ListEvent.Changed): List<String> = event.lines.filterIndexed { i, _ ->
+        val added = event.added.getOrElse(i) { false }
+        when (event.kind) {
+            SpaceKind.DIARY -> if (added) identity.notifyCalendarAdded else identity.notifyCalendarChanged
+            SpaceKind.LIST -> if (added) identity.notifyListAdded else identity.notifyListTicked
+            SpaceKind.GROUP -> identity.notifyGroupChanges
         }
     }
 

@@ -34,6 +34,7 @@ class Identity(context: Context) {
         get() = prefs.getString("theme", null) ?: if (prefs.getBoolean("darkMode", true)) "twodo-dark" else "twodo-light"
         set(value) = prefs.edit { putString("theme", value) }
 
+    /** The old single "Notify me about changes" switch; now only the starting value for the change options below. */
     var notifyChanges: Boolean
         get() = prefs.getBoolean("notifyChanges", true)
         set(value) = prefs.edit { putBoolean("notifyChanges", value) }
@@ -53,6 +54,71 @@ class Identity(context: Context) {
     var lastView: String?
         get() = prefs.getString("lastView", null)
         set(value) = prefs.edit { putString("lastView", value) }
+
+    // ---- Notifications (app-wide, per phone) ----
+    // Change notifications start the way the old "Notify me about changes" switch was set.
+
+    private fun flag(key: String, default: Boolean) = prefs.getBoolean(key, default)
+    private fun setFlag(key: String, value: Boolean) = prefs.edit { putBoolean(key, value) }
+
+    /** A morning notification listing today's calendar entries. */
+    var notifyDaily: Boolean
+        get() = flag("notifyDaily", true)
+        set(value) = setFlag("notifyDaily", value)
+
+    /** When the daily schedule comes, "HH:mm". */
+    var dailyTime: String
+        get() = prefs.getString("dailyTime", null) ?: "07:30"
+        set(value) = prefs.edit { putString("dailyTime", value) }
+
+    /** Skip the daily schedule on days with nothing on. */
+    var dailyOnlyIfSomething: Boolean
+        get() = flag("dailyOnlyIfSomething", true)
+        set(value) = setFlag("dailyOnlyIfSomething", value)
+
+    /** Minutes before a timed entry to remind about it; 0 is off. */
+    var reminderMinutes: Int
+        get() = prefs.getInt("reminderMinutes", 0)
+        set(value) = prefs.edit { putInt("reminderMinutes", value) }
+
+    /** Latest reminder time already notified (epoch ms), so nothing is reminded twice. */
+    var remindedUpTo: Long
+        get() = prefs.getLong("remindedUpTo", 0)
+        set(value) = prefs.edit { putLong("remindedUpTo", value) }
+
+    var notifyCalendarAdded: Boolean
+        get() = flag("notifyCalendarAdded", notifyChanges)
+        set(value) = setFlag("notifyCalendarAdded", value)
+
+    var notifyCalendarChanged: Boolean
+        get() = flag("notifyCalendarChanged", notifyChanges)
+        set(value) = setFlag("notifyCalendarChanged", value)
+
+    var notifyListAdded: Boolean
+        get() = flag("notifyListAdded", notifyChanges)
+        set(value) = setFlag("notifyListAdded", value)
+
+    /** Ticking off and removing list items: chatty while someone's shopping, so off to start. */
+    var notifyListTicked: Boolean
+        get() = flag("notifyListTicked", false)
+        set(value) = setFlag("notifyListTicked", value)
+
+    var notifyJoined: Boolean
+        get() = flag("notifyJoined", true)
+        set(value) = setFlag("notifyJoined", value)
+
+    var notifyLeft: Boolean
+        get() = flag("notifyLeft", true)
+        set(value) = setFlag("notifyLeft", value)
+
+    /** Groups: lists added or removed, renames, a new look. */
+    var notifyGroupChanges: Boolean
+        get() = flag("notifyGroupChanges", notifyChanges)
+        set(value) = setFlag("notifyGroupChanges", value)
+
+    var notifyConflicts: Boolean
+        get() = flag("notifyConflicts", true)
+        set(value) = setFlag("notifyConflicts", value)
 
     /** Opt-in: after a crash, offer to email a report to the developer. Off unless the user turns it on. */
     var offerCrashReports: Boolean

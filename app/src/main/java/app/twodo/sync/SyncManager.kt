@@ -11,6 +11,7 @@ import app.twodo.data.ListRepository
 import app.twodo.model.AuditEntry
 import app.twodo.model.Item
 import app.twodo.model.ListKeys
+import app.twodo.model.SpaceKind
 import app.twodo.model.describeChange
 import app.twodo.model.isPhotoPart
 import app.twodo.net.ListSwarm
@@ -450,11 +451,20 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     }
 
     private fun announceChanges(listId: String, changes: List<Pair<Item?, Item>>) {
-        changes.mapNotNull { (before, after) -> describeChange(before, after)?.let { after to it } }
-            .groupBy { (item, _) -> _names.value[item.version.by] ?: item.editor }
+        val kind = repo.lists.value[listId]?.kind ?: SpaceKind.LIST
+        changes.mapNotNull { (before, after) ->
+            describeChange(before, after)?.let { Triple(after, it, !after.deleted && (before == null || before.deleted)) }
+        }
+            .groupBy { (item, _, _) -> _names.value[item.version.by] ?: item.editor }
             .forEach { (who, described) ->
                 _events.tryEmit(
-                    ListEvent.Changed(listId, listName(listId), who, described.map { it.second }, described.map { it.first.id }),
+                    ListEvent.Changed(
+                        listId, listName(listId), who,
+                        lines = described.map { it.second },
+                        itemIds = described.map { it.first.id },
+                        added = described.map { it.third },
+                        kind = kind,
+                    ),
                 )
             }
     }

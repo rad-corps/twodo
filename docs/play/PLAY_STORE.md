@@ -125,6 +125,10 @@ through the adults' phones). Not designed for children.
 - If Play pushes back, alternatives: `dataSync` type (limited to 6 h/day on Android 15+), or rely on the
   15-minute background check plus relay delivery (which already works while the app is closed).
 
+**Exact alarms** (`USE_EXACT_ALARM`): the app is a shared family calendar, and exact alarms deliver its
+reminders ("Swimming in 30 minutes") and the morning daily schedule on time — Play allows this permission
+for calendar apps. Without it Android may delay reminders by up to an hour.
+
 **Camera permission:** used only to scan QR codes (declared by the QR library).
 
 ## Name ideas
