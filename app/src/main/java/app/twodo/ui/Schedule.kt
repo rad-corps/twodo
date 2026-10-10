@@ -139,7 +139,7 @@ internal fun ScheduleView(app: TwoDoApp, sources: List<ScheduleSource>, modifier
                         Text(
                             if (mixed) "${entry.source.label} · $who" else who,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = personColor(entry.item.version.by),
                         )
                     }
                 }

@@ -24,7 +24,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.twodo.model.AuditEntry
 import app.twodo.model.TodoList
@@ -94,7 +98,15 @@ internal fun AuditRow(
     val who = if (entry.by == myDeviceId) "You" else names[entry.by] ?: entry.byName
     val at = Instant.ofEpochMilli(entry.ts).atZone(ZoneId.systemDefault())
     Row(Modifier.fillMaxWidth().padding(horizontal = if (compact) 0.dp else 20.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
-        Text("$who ${entry.description}", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        val color = personColor(entry.by)
+        Text(
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = color, fontWeight = FontWeight.SemiBold)) { append(who) }
+                append(" ${entry.description}")
+            },
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+        )
         Text(
             (if (showDate) dayLabel(at.toLocalDate()) + " " else "") + at.format(timeOfDay),
             Modifier.padding(start = 12.dp),

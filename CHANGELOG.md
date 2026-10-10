@@ -5,6 +5,10 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Your own colour.** Pick one in App settings (under your name). Everyone sees what you do in it: the
+tick and "Sarah · 5 min ago" on items you tick, your name on calendar entries you add, in History, and
+your circle in Group settings. Until you pick one, you have one chosen automatically.
+
 ## v0.6.8 — 2026-10-10
 
 **Notification settings** (App settings › Notifications), for all your groups and lists:

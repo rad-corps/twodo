@@ -49,10 +49,13 @@ import java.util.concurrent.TimeUnit
 /** Messages exchanged over a peer's data channel (encrypted with the list key). */
 @Serializable
 sealed class SyncMessage {
-    /** [wantFull]: the sender (e.g. just joined) asks those online to send the whole list via the relays. */
+    /**
+     * [wantFull]: the sender (e.g. just joined) asks those online to send the whole list via the relays.
+     * [color]: the sender's chosen colour (ARGB), if any; older versions ignore it.
+     */
     @Serializable
     @SerialName("hello")
-    data class Hello(val deviceId: String, val deviceName: String, val wantFull: Boolean = false) : SyncMessage()
+    data class Hello(val deviceId: String, val deviceName: String, val wantFull: Boolean = false, val color: Long? = null) : SyncMessage()
 
     /**
      * [full] is the whole list, sent when a connection opens; otherwise just changed items. [audit]
@@ -125,6 +128,23 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     /** Other devices' current names, by device id. */
     val names: StateFlow<Map<String, String>> = _names.asStateFlow()
+
+    private val _colors = MutableStateFlow(identity.knownColors)
+
+    /** Colours others have chosen, by device id. */
+    val colors: StateFlow<Map<String, Long>> = _colors.asStateFlow()
+
+    private fun hello(wantFull: Boolean = false) = SyncMessage.Hello(identity.deviceId, identity.deviceName, wantFull, identity.myColor)
+
+    /** Remembers who someone is: their latest name and, if they've chosen one, their colour. */
+    private fun rememberPerson(hello: SyncMessage.Hello) {
+        identity.rememberName(hello.deviceId, hello.deviceName)
+        _names.value = identity.knownNames
+        hello.color?.let {
+            identity.rememberColor(hello.deviceId, it)
+            _colors.value = identity.knownColors
+        }
+    }
 
     private val _status = MutableStateFlow<Map<String, SyncStatus>>(emptyMap())
     val status: StateFlow<Map<String, SyncStatus>> = _status.asStateFlow()
@@ -279,8 +299,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
             is SyncMessage.Hello -> {
                 if (message.deviceId == identity.deviceId) return
                 relayList.seen[message.deviceId] = message.deviceName to SystemClock.elapsedRealtime()
-                identity.rememberName(message.deviceId, message.deviceName)
-                _names.value = identity.knownNames
+                rememberPerson(message)
                 val member = repo.recordMember(listId, message.deviceId, message.deviceName)
                 if (member.worthAnnouncing && !inGroup(listId)) _events.tryEmit(ListEvent.Joined(listId, listName(listId), message.deviceName))
                 val fresh = age < FRESH_HELLO_S
@@ -324,7 +343,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
     /** Says hello on the relays, asking for the whole list if we're still waiting for it. */
     private fun askViaRelays(relayList: RelayList) {
         relayList.lastAskedAt = SystemClock.elapsedRealtime()
-        publishToRelays(relayList.listId, SyncMessage.Hello(identity.deviceId, identity.deviceName, relayList.awaitingFull), live = true)
+        publishToRelays(relayList.listId, hello(relayList.awaitingFull), live = true)
     }
 
     /** Someone asked for the whole list through the relays; send it (at most every so often). */
@@ -391,7 +410,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
 
     override suspend fun onPeerOpen(swarm: ListSwarm, peer: Peer) {
         val list = repo.lists.value[swarm.listId] ?: return
-        send(swarm, peer, SyncMessage.Hello(identity.deviceId, identity.deviceName))
+        send(swarm, peer, hello())
         sendItems(swarm, peer, list.items.values.toList(), list.audit.values.toList(), full = true)
     }
 
@@ -407,8 +426,7 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
                 peer.deviceName = message.deviceName
                 // Seen through the relays under an older name? Keep one name per person.
                 relayLists[swarm.listId]?.seen?.computeIfPresent(message.deviceId) { _, (_, at) -> message.deviceName to at }
-                identity.rememberName(message.deviceId, message.deviceName)
-                _names.value = identity.knownNames
+                rememberPerson(message)
                 val member = repo.recordMember(swarm.listId, message.deviceId, message.deviceName)
                 if (member.firstContact) firstSyncPeers += peer
                 if (member.worthAnnouncing && !inGroup(swarm.listId)) {
@@ -496,14 +514,14 @@ class SyncManager(context: Context, private val repo: ListRepository, private va
         scope.launch {
             swarms[listId]?.eager = sharing
             // Let anyone online via the relays see us straight away too.
-            if (sharing) publishToRelays(listId, SyncMessage.Hello(identity.deviceId, identity.deviceName), live = true)
+            if (sharing) publishToRelays(listId, hello(), live = true)
         }
     }
 
-    /** Tells connected devices about this user's new name. */
+    /** Tells connected devices about this user's new name or colour. */
     fun nameChanged() {
         scope.launch {
-            val hello = SyncMessage.Hello(identity.deviceId, identity.deviceName)
+            val hello = hello()
             swarms.values.forEach { swarm -> swarm.openPeers.forEach { send(swarm, it, hello) } }
             relayLists.keys.forEach { publishToRelays(it, hello, live = true) }
         }

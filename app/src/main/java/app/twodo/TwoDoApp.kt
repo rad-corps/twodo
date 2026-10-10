@@ -35,6 +35,10 @@ class TwoDoApp : Application() {
     lateinit var textScale: MutableStateFlow<Float>
         private set
 
+    /** This person's chosen colour, or null for the one derived from their device. */
+    lateinit var myColor: MutableStateFlow<Long?>
+        private set
+
     /** Number of started activities; conflicts are shown in-app while visible, as notifications otherwise. */
     var visibleActivities = 0
 
@@ -56,6 +60,7 @@ class TwoDoApp : Application() {
         sync = SyncManager(this, repo, identity)
         appTheme = MutableStateFlow(identity.themeId)
         textScale = MutableStateFlow(identity.textScale)
+        myColor = MutableStateFlow(identity.myColor)
         Notifications.createChannels(this)
         SyncWorker.schedule(this)
         // Calendar changes (from anyone) can move the next reminder; settle for a moment, then set it.
@@ -100,6 +105,14 @@ class TwoDoApp : Application() {
     fun setTheme(themeId: String) {
         identity.themeId = themeId
         appTheme.value = themeId
+    }
+
+    /** Sets this person's colour and tells the others (it travels with their name). */
+    fun setColor(color: Long) {
+        if (identity.myColor == color) return
+        identity.myColor = color
+        myColor.value = color
+        sync.nameChanged()
     }
 
     fun setTextScale(scale: Float) {

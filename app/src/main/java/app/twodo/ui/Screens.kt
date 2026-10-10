@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -55,6 +56,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -88,6 +90,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -234,6 +237,10 @@ fun TwoDoRoot(
     val look = rememberLook(app, space ?: group, appTheme)
     LaunchedEffect(look.theme.dark) { onScreenDark(look.theme.dark) }
 
+    val myColor by app.myColor.collectAsStateWithLifecycle()
+    val colors by app.sync.colors.collectAsStateWithLifecycle()
+    val people = remember(myColor, colors) { People(app.identity.deviceId, myColor, colors) }
+    CompositionLocalProvider(LocalPeople provides people) {
     LookSurface(look) {
         when {
             notifications -> NotificationSettingsScreen(app, onBack = { notifications = false })
@@ -255,6 +262,7 @@ fun TwoDoRoot(
             allCalendars -> AllCalendarsScreen(app, calendars, navigation)
             else -> ListsScreen(app, others, status, snackbar, appTheme, navigation, onOpen = { openSpaceId = it })
         }
+    }
     }
 
     if (lists.isNotEmpty() && !app.identity.hasName && !nameAsked) {
@@ -587,7 +595,8 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
                             checked = item.checked,
                             onCheckedChange = { scope.launch { app.repo.setChecked(list.id, item.id, it) } },
                             colors = CheckboxDefaults.colors(
-                                checkedColor = MaterialTheme.colorScheme.primary,
+                                // Ticked in the colour of whoever ticked it.
+                                checkedColor = personColor(item.version.by),
                                 uncheckedColor = MaterialTheme.colorScheme.outline,
                             ),
                         )
@@ -602,7 +611,7 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
                                 Text(
                                     tickedBy(item, app.identity.deviceId, names),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.outline,
+                                    color = personColor(item.version.by),
                                 )
                             }
                         }
@@ -897,6 +906,8 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit, onNotifications
     }
     var textScale by remember { mutableStateOf(app.identity.textScale) }
     var offerCrashReports by remember { mutableStateOf(app.identity.offerCrashReports) }
+    val startColor = app.identity.myColor ?: defaultColor(app.identity.deviceId)
+    var myColor by remember { mutableStateOf(startColor) }
     val context = LocalContext.current
     var crashReports by remember { mutableStateOf(CrashLog.reports(context)) }
     var showLog by remember { mutableStateOf(false) }
@@ -915,6 +926,26 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit, onNotifications
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Spacer(Modifier.height(8.dp))
+                Text("Your colour")
+                Text(
+                    "Everyone sees what you tick and add in it",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(PERSON_COLORS) { option ->
+                        Box(
+                            Modifier.size(36.dp).clip(CircleShape).background(Color(option))
+                                .border(if (option == myColor) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                .clickable { myColor = option },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (option == myColor) Icon(Icons.Default.Check, "Your colour", tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
                 Spacer(Modifier.height(16.dp))
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { pickingTheme = true }.padding(vertical = 8.dp),
@@ -1016,6 +1047,8 @@ private fun SettingsDialog(app: TwoDoApp, onDismiss: () -> Unit, onNotifications
         confirmButton = {
             TextButton(onClick = {
                 if (name.isNotBlank()) app.setName(name)
+                // Only once actually changed: until then, the colour stays the one derived from this device.
+                if (myColor != startColor) app.setColor(myColor)
                 app.setTheme(themeId)
                 if (offerCrashReports && !app.identity.offerCrashReports) {
                     // Turning it on shouldn't immediately pop up old crashes; they're in Settings.

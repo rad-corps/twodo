@@ -374,7 +374,7 @@ private fun DayPage(
                     Text(
                         if (entry.version.by == myDeviceId) "You" else names[entry.version.by] ?: entry.editor,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = personColor(entry.version.by),
                     )
                 }
             }

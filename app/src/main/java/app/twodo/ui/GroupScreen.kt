@@ -435,7 +435,7 @@ private fun PersonRow(id: String, name: String, detail: String, here: Boolean) {
 /** A coloured circle with the person's initial; the colour is fixed per device so people are easy to spot. */
 @Composable
 internal fun Avatar(id: String, name: String, size: Int = 44) {
-    val color = Color(ACCENTS[Math.floorMod(id.hashCode(), ACCENTS.size)])
+    val color = personColor(id)
     Box(Modifier.size(size.dp).clip(CircleShape).background(color), contentAlignment = Alignment.Center) {
         Text(
             name.trim().firstOrNull()?.uppercase() ?: "?",

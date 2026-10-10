@@ -29,6 +29,20 @@ class Identity(context: Context) {
         if (knownNames[deviceId] != name) prefs.edit { putString("knownNames", Json.encodeToString(knownNames + (deviceId to name))) }
     }
 
+    /** This person's colour (ARGB), shown to everyone on what they do; null until chosen (then one is derived from [deviceId]). */
+    var myColor: Long?
+        get() = if (prefs.contains("myColor")) prefs.getLong("myColor", 0) else null
+        set(value) = prefs.edit { if (value == null) remove("myColor") else putLong("myColor", value) }
+
+    /** Colours others have chosen, by device id. */
+    val knownColors: Map<String, Long>
+        get() = runCatching { Json.decodeFromString<Map<String, Long>>(prefs.getString("knownColors", null)!!) }
+            .getOrDefault(emptyMap())
+
+    fun rememberColor(deviceId: String, color: Long) {
+        if (knownColors[deviceId] != color) prefs.edit { putString("knownColors", Json.encodeToString(knownColors + (deviceId to color))) }
+    }
+
     /** The app's colour theme. Older versions had a dark mode switch; turning it off meant the light default. */
     var themeId: String
         get() = prefs.getString("theme", null) ?: if (prefs.getBoolean("darkMode", true)) "twodo-dark" else "twodo-light"
