@@ -107,6 +107,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -125,7 +126,9 @@ import app.twodo.model.Item
 import app.twodo.model.ShareLink
 import app.twodo.model.SpaceKind
 import app.twodo.model.TodoList
+import app.twodo.model.headings
 import app.twodo.model.isJoining
+import app.twodo.model.sectionOf
 import app.twodo.sync.ListEvent
 import app.twodo.sync.Notifications
 import app.twodo.sync.SyncStatus
@@ -557,6 +560,8 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
 
     // Set when this phone adds an item, so the list scrolls to it once it appears.
     var scrollToNew by remember { mutableStateOf(false) }
+    // The item (or heading) open for changing.
+    var editing by remember { mutableStateOf<Item?>(null) }
 
     fun add() {
         val text = newText
@@ -585,13 +590,33 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
                         animationSpec = tween(600),
                         label = "highlight",
                     )
+                    val dragHandle = Modifier.draggableHandle(onDragStopped = {
+                        val index = ordered.indexOfFirst { it.id == item.id }
+                        scope.launch { app.repo.moveItem(list.id, item.id, index) }
+                    })
+                    if (item.heading) {
+                        // A section heading: bold, no checkbox; tap to rename or delete.
+                        Row(
+                            Modifier.fillMaxWidth().background(background).clickable { editing = item }
+                                .padding(start = 20.dp, end = 4.dp, top = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                item.text,
+                                Modifier.weight(1f).padding(vertical = 8.dp),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Icon(painterResource(R.drawable.ic_drag_handle), "Move heading", tint = MaterialTheme.colorScheme.outline, modifier = dragHandle.padding(12.dp))
+                        }
+                        return@ReorderableItem
+                    }
                     Row(
-                        Modifier.fillMaxWidth()
-                            .background(background)
-                            .clickable { scope.launch { app.repo.setChecked(list.id, item.id, !item.checked) } }
-                            .padding(start = 8.dp, end = 4.dp),
+                        Modifier.fillMaxWidth().background(background).padding(start = 8.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // The checkbox ticks; the words open the item to change or delete it.
                         Checkbox(
                             checked = item.checked,
                             onCheckedChange = { scope.launch { app.repo.setChecked(list.id, item.id, it) } },
@@ -601,7 +626,7 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
                                 uncheckedColor = MaterialTheme.colorScheme.outline,
                             ),
                         )
-                        Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
+                        Column(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { editing = item }.padding(vertical = 12.dp, horizontal = 4.dp)) {
                             Text(
                                 item.text,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -616,18 +641,7 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
                                 )
                             }
                         }
-                        IconButton(onClick = { scope.launch { app.repo.deleteItem(list.id, item.id) } }) {
-                            Icon(Icons.Default.Close, "Delete", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
-                        }
-                        Icon(
-                            painterResource(R.drawable.ic_drag_handle),
-                            "Reorder",
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.draggableHandle(onDragStopped = {
-                                val index = ordered.indexOfFirst { it.id == item.id }
-                                scope.launch { app.repo.moveItem(list.id, item.id, index) }
-                            }).padding(12.dp),
-                        )
+                        Icon(painterResource(R.drawable.ic_drag_handle), "Reorder", tint = MaterialTheme.colorScheme.outline, modifier = dragHandle.padding(12.dp))
                     }
                 }
             }
@@ -653,6 +667,32 @@ internal fun ListBody(app: TwoDoApp, list: TodoList, status: SyncStatus, modifie
         }
     }
 
+    editing?.let { open ->
+        // The latest version, in case someone changed it meanwhile.
+        val item = list.items[open.id]?.takeIf { !it.deleted } ?: return@let
+        val history = remember(list.audit, item.id) { list.audit.values.filter { it.itemId == item.id }.sortedByDescending { it.ts } }
+        ListItemSheet(
+            item = item,
+            headings = list.headings,
+            section = sectionOf(list.visibleItems, item.id),
+            onDismiss = { editing = null },
+            onSave = { text, headingId ->
+                editing = null
+                val before = sectionOf(list.visibleItems, item.id)?.id
+                app.save {
+                    app.repo.editText(list.id, item.id, text)
+                    if (!item.heading && headingId != before) app.repo.moveToSection(list.id, item.id, headingId)
+                }
+            },
+            onDelete = {
+                editing = null
+                app.save { app.repo.deleteItem(list.id, item.id) }
+            },
+            history = history,
+            historyRow = { AuditRow(it, app.identity.deviceId, names, showDate = true, compact = true) },
+        )
+    }
+
 }
 
 /** Title with sync status, Share, and a menu with History and Remove — shared by lists and diaries. */
@@ -663,6 +703,7 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
     var confirmRemove by remember { mutableStateOf(false) }
     var pickingTheme by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    var addingHeading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val inGroup = list.groupId != null
     TopAppBar(
@@ -689,6 +730,9 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
             if (!inGroup) IconButton(onClick = { sharing = true }) { Icon(Icons.Default.Share, "Share") }
             IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (list.kind == SpaceKind.LIST) {
+                    DropdownMenuItem(text = { Text("Add a heading") }, onClick = { menu = false; addingHeading = true })
+                }
                 DropdownMenuItem(text = { Text("History") }, onClick = { menu = false; onHistory() })
                 if (inGroup) {
                     DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renaming = true })
@@ -712,6 +756,18 @@ internal fun SpaceTopBar(app: TwoDoApp, list: TodoList, status: SyncStatus, onBa
             icon = list.kind.icon,
             onDismiss = { pickingTheme = false },
         ) { id -> scope.launch { app.repo.setTheme(list.id, id) } }
+    }
+    if (addingHeading) {
+        TextPromptDialog(
+            title = "Add a heading",
+            label = "Heading",
+            confirm = "Add",
+            supporting = "For example: Fruit & veg, Dairy, Bakery. It goes at the bottom; drag it, or move items into it.",
+            onDismiss = { addingHeading = false },
+        ) { name ->
+            addingHeading = false
+            app.save { app.repo.addItem(list.id, name, heading = true) }
+        }
     }
     if (renaming) {
         TextPromptDialog(title = "Rename", label = "Name", confirm = "Save", initial = list.name, onDismiss = { renaming = false }) { name ->
@@ -1141,7 +1197,7 @@ private fun TodoList.summary(): String = if (isJoining) "Joining…" else when (
         val count = items.values.count { !it.deleted && it.date == today }
         if (count == 0) "Diary · nothing today" else "Diary · $count today"
     }
-    SpaceKind.LIST -> "${visibleItems.count { !it.checked }} to do"
+    SpaceKind.LIST -> "${visibleItems.count { !it.checked && !it.heading }} to do"
     SpaceKind.GROUP -> "Group"
 }
 

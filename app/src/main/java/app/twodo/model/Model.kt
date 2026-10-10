@@ -40,6 +40,11 @@ data class Item(
     val spaceId: String? = null,
     val spaceSecret: String? = null,
     val spaceKind: SpaceKind? = null,
+    /**
+     * A section heading in a list ("Dairy"), not something to tick. Items below it, up to the next
+     * heading, are in its section. Older versions ignore this and show it as an item.
+     */
+    val heading: Boolean = false,
 ) {
     val position: Double get() = pos ?: createdAt.toDouble()
     val localDate: LocalDate? get() = date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }

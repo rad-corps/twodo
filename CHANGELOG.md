@@ -5,6 +5,14 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Edit list items.** Tap an item's words to change them, move it to a section, or delete it. Tick it
+with its checkbox. (The ✕ on each row is gone: delete is in the item, so nothing goes by accident.)
+
+**Sections in lists.** Add headings like "Dairy" or "Fruit & veg" (⋮ › Add a heading). Items below a
+heading are in its section; put an item in a section from the item itself, or drag. Tap a heading to
+rename or delete it — deleting a heading keeps its items. Headings don't count as things to do.
+Older versions show headings as ordinary items.
+
 ## v0.6.10 — 2026-10-10
 
 - The Notifications settings screen now uses the app's own theme instead of the look of the group you

@@ -6,6 +6,7 @@ import app.twodo.model.Conflict
 import app.twodo.model.GROUP_LOOK_ITEM
 import app.twodo.model.GROUP_NAME_ITEM
 import app.twodo.model.Look
+import app.twodo.model.indexForSection
 import app.twodo.model.isPhotoPart
 import app.twodo.model.photoBase64
 import app.twodo.model.photoPartId
@@ -286,8 +287,8 @@ class ListRepository(private val dir: File, private val identity: Identity) {
         }
     }
 
-    /** Adds an item at the bottom of the list. */
-    suspend fun addItem(listId: String, text: String) {
+    /** Adds an item (or, with [heading], a section heading) at the bottom of the list. */
+    suspend fun addItem(listId: String, text: String, heading: Boolean = false) {
         val trimmed = text.trim().ifEmpty { return }
         putLocal(listId) { list ->
             val now = System.currentTimeMillis()
@@ -299,8 +300,24 @@ class ListRepository(private val dir: File, private val identity: Identity) {
                 editor = identity.deviceName,
                 pos = (list.visibleItems.maxOfOrNull { it.position } ?: 0.0) + 1,
                 posVersion = Version(now, identity.deviceId),
+                heading = heading,
             )
         }
+    }
+
+    /** Changes an item's (or heading's) text. Does nothing if it's the same. */
+    suspend fun editText(listId: String, itemId: String, text: String) {
+        val trimmed = text.trim().ifEmpty { return }
+        putLocal(listId) { list ->
+            val item = list.items[itemId]?.takeIf { it.text != trimmed } ?: return@putLocal null
+            item.edited(identity.deviceId, identity.deviceName, System.currentTimeMillis()) { copy(text = trimmed) }
+        }
+    }
+
+    /** Moves an item to the end of [headingId]'s section, or above all headings with null. */
+    suspend fun moveToSection(listId: String, itemId: String, headingId: String?) {
+        val list = _lists.value[listId] ?: return
+        moveItem(listId, itemId, indexForSection(list.visibleItems, itemId, headingId))
     }
 
     /** Moves an item so it ends up at [toIndex] among the visible items. */

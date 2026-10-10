@@ -324,7 +324,7 @@ private fun ListsTab(app: TwoDoApp, group: TodoList, lists: Map<String, TodoList
 
 private fun toDoSummary(list: TodoList): String {
     if (list.isJoining) return "Getting it…"
-    val left = list.visibleItems.count { !it.checked }
+    val left = list.visibleItems.count { !it.checked && !it.heading }
     return when (left) {
         0 -> "All done"
         1 -> "1 thing to do"

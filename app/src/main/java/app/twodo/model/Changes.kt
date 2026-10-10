@@ -25,6 +25,12 @@ fun describeChange(before: Item?, after: Item): String? = when {
     // Photo pieces and settings in a group aren't news in themselves.
     after.isPhotoPart -> null
     after.id == GROUP_LOOK_ITEM -> if (after.deleted) null else "changed the group's look"
+    after.heading -> when {
+        after.deleted -> if (before == null || before.deleted) null else "removed the heading ${before.text}"
+        before == null || before.deleted -> "added the heading ${after.text}"
+        before.text != after.text -> "renamed the heading ${before.text} to ${after.text}"
+        else -> null
+    }
     after.deleted -> if (before == null || before.deleted) null else "removed ${before.text}${before.whenText()}"
     before == null || before.deleted -> "added ${after.text}${after.whenText()}"
     before.checked != after.checked -> (if (after.checked) "ticked " else "unticked ") + after.text
