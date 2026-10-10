@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.8 — 2026-10-10
+
 **Notification settings** (App settings › Notifications), for all your groups and lists:
 - **Daily schedule** — what's on today, each morning at a time you choose (7:30 to start).
 - **Reminders** before anything with a time: 10 minutes, 30 minutes or an hour before (off to start).
