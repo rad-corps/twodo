@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.10 — 2026-10-10
+
 - The Notifications settings screen now uses the app's own theme instead of the look of the group you
   opened it from (its settings are for the whole app).
 
