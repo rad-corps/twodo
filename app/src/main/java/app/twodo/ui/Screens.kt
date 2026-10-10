@@ -234,7 +234,8 @@ fun TwoDoRoot(
     val allCalendars = view == ALL_CALENDARS && calendars.size > 1
     val group = view?.let { lists[it] }?.takeIf { it.kind == SpaceKind.GROUP }
         ?: if ((view == OTHER_LISTS && others.isNotEmpty()) || allCalendars) null else groups.firstOrNull()
-    val look = rememberLook(app, space ?: group, appTheme)
+    // App-wide screens (Notifications) wear the app's theme, not the look of the group they were opened from.
+    val look = rememberLook(app, if (notifications) null else space ?: group, appTheme)
     LaunchedEffect(look.theme.dark) { onScreenDark(look.theme.dark) }
 
     val myColor by app.myColor.collectAsStateWithLifecycle()
