@@ -21,6 +21,7 @@ import org.webrtc.PeerConnectionFactory
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import java.nio.ByteBuffer
+import kotlin.coroutines.Continuation
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -35,6 +36,10 @@ interface PeerEvents {
  * answers carry their ICE candidates, so a tracker only needs to relay one message each way. They're
  * sent once a public (server-reflexive) address is known rather than when gathering fully finishes,
  * which on phones can take many seconds. Events are delivered in [scope].
+ *
+ * Closing frees WebRTC's native objects, and touching them after that kills the whole app (it's not
+ * an exception that can be caught). So every use goes through [live], they're freed only once no use
+ * is in progress, and anything after closing is skipped or fails as an ordinary exception.
  */
 class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, private val events: PeerEvents) {
     /** The remote side's tracker peer id, once known. */
@@ -44,46 +49,100 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
 
     private val gathered = CompletableDeferred<Unit>()
     private val gotPublicAddress = CompletableDeferred<Unit>()
-    private var channel: DataChannel? = null
-    private var closed = false
+    @Volatile private var channel: DataChannel? = null
+    @Volatile private var closed = false
     private var openNotified = false
 
-    val isOpen: Boolean get() = !closed && channel?.state() == DataChannel.State.OPEN
+    private val lock = Object()
+    /** Uses of [pc] or [channel] in progress (guarded by [lock]). */
+    private var inUse = 0
+
+    val isOpen: Boolean get() = live { channel?.state() == DataChannel.State.OPEN } == true
 
     private val pc: PeerConnection = factory.createPeerConnection(rtcConfig(), Observer())
         ?: error("Could not create PeerConnection")
 
+    /** Runs [block], which uses the native objects, unless closed (then null). */
+    private inline fun <T> live(block: () -> T): T? {
+        synchronized(lock) {
+            if (closed) return null
+            inUse++
+        }
+        try {
+            return block()
+        } finally {
+            synchronized(lock) {
+                inUse--
+                lock.notifyAll()
+            }
+        }
+    }
+
+    private fun closedError() = IllegalStateException("Connection closed")
+
     suspend fun createOffer(): String {
-        attach(pc.createDataChannel("sync", DataChannel.Init().apply { ordered = true }))
-        val offer = pc.awaitCreate(offer = true)
-        pc.awaitSet(local = true, offer)
+        attach(live { pc.createDataChannel("sync", DataChannel.Init().apply { ordered = true }) } ?: throw closedError())
+        val offer = awaitCreate(offer = true)
+        awaitSet(local = true, offer)
         return gatheredSdp()
     }
 
     suspend fun acceptOffer(sdp: String): String {
-        pc.awaitSet(local = false, SessionDescription(SessionDescription.Type.OFFER, sdp))
-        val answer = pc.awaitCreate(offer = false)
-        pc.awaitSet(local = true, answer)
+        awaitSet(local = false, SessionDescription(SessionDescription.Type.OFFER, sdp))
+        val answer = awaitCreate(offer = false)
+        awaitSet(local = true, answer)
         return gatheredSdp()
     }
 
     suspend fun acceptAnswer(sdp: String) =
-        pc.awaitSet(local = false, SessionDescription(SessionDescription.Type.ANSWER, sdp))
+        awaitSet(local = false, SessionDescription(SessionDescription.Type.ANSWER, sdp))
 
-    fun send(text: String): Boolean =
-        isOpen && channel?.send(DataChannel.Buffer(ByteBuffer.wrap(text.toByteArray()), false)) == true
+    fun send(text: String): Boolean = live {
+        val dc = channel
+        dc != null && dc.state() == DataChannel.State.OPEN && dc.send(DataChannel.Buffer(ByteBuffer.wrap(text.toByteArray()), false))
+    } == true
 
     fun close() {
-        if (closed) return
-        closed = true
-        val dc = channel
-        dc?.unregisterObserver()
+        synchronized(lock) {
+            if (closed) return
+            closed = true
+        }
         // Disposing blocks for a while (it waits on WebRTC's threads), so keep it off the sync thread.
         disposer.execute {
-            dc?.run { close(); dispose() }
+            synchronized(lock) { while (inUse > 0) lock.wait() }
+            channel?.run { unregisterObserver(); close(); dispose() }
             pc.dispose()
         }
     }
+
+    private suspend fun awaitCreate(offer: Boolean): SessionDescription = awaitSdp { cont ->
+        val observer = object : SdpObserver {
+            override fun onCreateSuccess(sdp: SessionDescription) = cont.resume(sdp)
+            override fun onCreateFailure(error: String?) = cont.resumeWithException(IllegalStateException(error))
+            override fun onSetSuccess() = Unit
+            override fun onSetFailure(error: String?) = Unit
+        }
+        live { if (offer) pc.createOffer(observer, MediaConstraints()) else pc.createAnswer(observer, MediaConstraints()) }
+    }
+
+    private suspend fun awaitSet(local: Boolean, sdp: SessionDescription): Unit = awaitSdp { cont ->
+        val observer = object : SdpObserver {
+            override fun onCreateSuccess(sdp: SessionDescription) = Unit
+            override fun onCreateFailure(error: String?) = Unit
+            override fun onSetSuccess() = cont.resume(Unit)
+            override fun onSetFailure(error: String?) = cont.resumeWithException(IllegalStateException(error))
+        }
+        live { if (local) pc.setLocalDescription(observer, sdp) else pc.setRemoteDescription(observer, sdp) }
+    }
+
+    /**
+     * Starts creating or setting a description with [start] (which returns null if already closed) and
+     * waits for WebRTC's answer. One closed part-way may never answer, hence the time limit.
+     */
+    private suspend fun <T> awaitSdp(start: (Continuation<T>) -> Unit?): T =
+        withTimeoutOrNull(SDP_TIMEOUT_MS) {
+            suspendCancellableCoroutine<T> { cont -> if (start(cont) == null) cont.resumeWithException(closedError()) }
+        } ?: throw if (closed) closedError() else IllegalStateException("No answer from WebRTC")
 
     /**
      * The local description once it's worth sending: when gathering completes, shortly after the first
@@ -101,7 +160,8 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
             }
             afterPublic.cancel()
         }
-        val sdp = pc.localDescription?.description ?: error("No local description")
+        // It may have been closed while waiting.
+        val sdp = live { pc.localDescription?.description } ?: throw if (closed) closedError() else IllegalStateException("No local description")
         val types = Regex("""typ (\w+)""").findAll(sdp).map { it.groupValues[1] }.groupingBy { it }.eachCount()
         val took = SystemClock.elapsedRealtime() - started
         // Only the slow or unusual ones are worth a line in the connection log.
@@ -113,25 +173,30 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
 
     private fun attach(dc: DataChannel) {
         channel = dc
-        dc.registerObserver(object : DataChannel.Observer {
-            override fun onBufferedAmountChange(previousAmount: Long) = Unit
-
-            override fun onStateChange() {
-                when (dc.state()) {
-                    DataChannel.State.OPEN -> notifyOpen()
-                    DataChannel.State.CLOSED -> scope.launch { events.onClosed(this@Peer) }
-                    else -> Unit
-                }
-            }
-
-            override fun onMessage(buffer: DataChannel.Buffer) {
-                if (buffer.binary) return
-                val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
-                scope.launch { events.onMessage(this@Peer, String(bytes)) }
-            }
-        })
+        val state = live {
+            dc.registerObserver(observe(dc))
+            dc.state()
+        }
         // The answering side gets the channel via onDataChannel, possibly after it already opened.
-        if (dc.state() == DataChannel.State.OPEN) notifyOpen()
+        if (state == DataChannel.State.OPEN) notifyOpen()
+    }
+
+    private fun observe(dc: DataChannel) = object : DataChannel.Observer {
+        override fun onBufferedAmountChange(previousAmount: Long) = Unit
+
+        override fun onStateChange() {
+            when (live { dc.state() }) {
+                DataChannel.State.OPEN -> notifyOpen()
+                DataChannel.State.CLOSED -> scope.launch { events.onClosed(this@Peer) }
+                else -> Unit
+            }
+        }
+
+        override fun onMessage(buffer: DataChannel.Buffer) {
+            if (buffer.binary || closed) return
+            val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
+            scope.launch { events.onMessage(this@Peer, String(bytes)) }
+        }
     }
 
     private fun notifyOpen() {
@@ -155,7 +220,10 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         }
 
         override fun onDataChannel(dc: DataChannel) {
-            scope.launch { if (!closed) attach(dc) else dc.dispose() }
+            scope.launch {
+                // Closed already: free it after the connection (in order, on the same thread).
+                if (closed) disposer.execute { dc.dispose() } else attach(dc)
+            }
         }
 
         override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
@@ -184,6 +252,8 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         const val SLOW_GATHER_MS = 400L
         /** Other interfaces' public addresses usually follow within a moment of the first. */
         const val PUBLIC_ADDRESS_GRACE_MS = 150L
+        /** Creating or setting a description takes milliseconds; this is only for one that never answers. */
+        const val SDP_TIMEOUT_MS = 10_000L
 
         fun rtcConfig() = PeerConnection.RTCConfiguration(
             listOf(
@@ -197,25 +267,3 @@ class Peer(factory: PeerConnectionFactory, private val scope: CoroutineScope, pr
         }
     }
 }
-
-private suspend fun PeerConnection.awaitCreate(offer: Boolean): SessionDescription =
-    suspendCancellableCoroutine { cont ->
-        val observer = object : SdpObserver {
-            override fun onCreateSuccess(sdp: SessionDescription) = cont.resume(sdp)
-            override fun onCreateFailure(error: String?) = cont.resumeWithException(IllegalStateException(error))
-            override fun onSetSuccess() = Unit
-            override fun onSetFailure(error: String?) = Unit
-        }
-        if (offer) createOffer(observer, MediaConstraints()) else createAnswer(observer, MediaConstraints())
-    }
-
-private suspend fun PeerConnection.awaitSet(local: Boolean, sdp: SessionDescription): Unit =
-    suspendCancellableCoroutine { cont ->
-        val observer = object : SdpObserver {
-            override fun onCreateSuccess(sdp: SessionDescription) = Unit
-            override fun onCreateFailure(error: String?) = Unit
-            override fun onSetSuccess() = cont.resume(Unit)
-            override fun onSetFailure(error: String?) = cont.resumeWithException(IllegalStateException(error))
-        }
-        if (local) setLocalDescription(observer, sdp) else setRemoteDescription(observer, sdp)
-    }

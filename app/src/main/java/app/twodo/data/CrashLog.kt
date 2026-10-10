@@ -1,5 +1,7 @@
 package app.twodo.data
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -42,6 +44,43 @@ object CrashLog {
         }
         dir(context).apply { mkdirs() }.resolve("$now.txt").writeText(report)
         reports(context).dropLast(KEEP).forEach { it.delete() }
+    }
+
+    /**
+     * Crashes in native code (WebRTC, for one) end the app without reaching [install]'s handler, but
+     * Android remembers why the app last ended (Android 11+). Notes any such crash not yet noted, with
+     * the readable parts of Android's crash record (its function names).
+     */
+    fun noteNativeCrashes(context: Context) {
+        if (Build.VERSION.SDK_INT < 30) return
+        val prefs = context.getSharedPreferences("crashlog", Context.MODE_PRIVATE)
+        val since = prefs.getLong("nativeSeenUpTo", 0)
+        val exits = context.getSystemService(ActivityManager::class.java)
+            .getHistoricalProcessExitReasons(null, 0, KEEP)
+            .filter { it.reason == ApplicationExitInfo.REASON_CRASH_NATIVE && it.timestamp > since }
+        if (exits.isEmpty()) return
+        exits.forEach { exit ->
+            val report = buildString {
+                appendLine("Native crash at ${stamp.format(Instant.ofEpochMilli(exit.timestamp))} in ${exit.processName}: ${exit.description}")
+                readableParts(exit).forEach { appendLine("  $it") }
+            }
+            dir(context).apply { mkdirs() }.resolve("${exit.timestamp}.txt").writeText(report)
+        }
+        prefs.edit().putLong("nativeSeenUpTo", exits.maxOf { it.timestamp }).apply()
+        reports(context).dropLast(KEEP).forEach { it.delete() }
+    }
+
+    /** Function names from the crash record (a binary file), in order: enough to see where it happened. */
+    private fun readableParts(exit: ApplicationExitInfo): List<String> {
+        if (Build.VERSION.SDK_INT < 31) return emptyList()
+        val bytes = runCatching { exit.traceInputStream?.use { it.readBytes() } }.getOrNull() ?: return emptyList()
+        return Regex("""[A-Za-z_$][\w$.:<>~]{5,}(?:\([^)]{0,80}\))?(?:\+\d+)?""")
+            .findAll(String(bytes, Charsets.ISO_8859_1))
+            .map { it.value }
+            .filter { '.' in it || '_' in it || "::" in it }
+            .distinct()
+            .take(40)
+            .toList()
     }
 
     private fun dir(context: Context) = File(context.filesDir, "crashes")

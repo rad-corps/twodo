@@ -5,6 +5,13 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Fixed: the app closing by itself, again and again.** When a connection between phones was shut down
+while it was still being set up (e.g. both phones tried at once, or the network changed), the app could
+crash in the connection code. It now waits until nothing is using a connection before freeing it.
+
+**Crash reports include crashes in the connection code.** These closed the app without being noted;
+they're now picked up from Android's record when the app next opens (Android 11 and later).
+
 ## v0.6.12 — 2026-10-10
 
 **Times typed in calendar entries.** Type "Dentist 11:30am" (or "at 11:30 am", "7pm", "14:30", "3-4pm",

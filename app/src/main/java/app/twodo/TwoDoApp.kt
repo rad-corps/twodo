@@ -55,6 +55,7 @@ class TwoDoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this)
+        runCatching { CrashLog.noteNativeCrashes(this) }
         identity = Identity(this)
         repo = ListRepository(File(filesDir, "lists"), identity)
         sync = SyncManager(this, repo, identity)
