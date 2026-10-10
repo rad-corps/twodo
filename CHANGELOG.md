@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.13 — 2026-10-10
+
 **Fixed: the app closing by itself, again and again.** When a connection between phones was shut down
 while it was still being set up (e.g. both phones tried at once, or the network changed), the app could
 crash in the connection code. It now waits until nothing is using a connection before freeing it.
