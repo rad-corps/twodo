@@ -45,7 +45,6 @@ class MainActivity : ComponentActivity() {
             registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
                 .launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (app.identity.backgroundSync) SyncService.setEnabled(this, true)
         setContent {
             val themeId by app.appTheme.collectAsStateWithLifecycle()
             // The open list may have its own theme; the status bar icons follow whatever is on screen.
@@ -79,6 +78,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Started here, while the app is on screen: Android only allows starting it from the foreground,
+        // and this brings it back if it was stopped while the app was in the background.
+        if (app.identity.backgroundSync) SyncService.setEnabled(this, true)
         app.visibleActivities++
         app.sync.acquire()
     }

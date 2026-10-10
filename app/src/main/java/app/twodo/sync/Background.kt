@@ -1,6 +1,7 @@
 package app.twodo.sync
 
 import android.app.Notification
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -18,6 +19,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.twodo.R
 import app.twodo.TwoDoApp
+import app.twodo.net.SyncLog
 import kotlinx.coroutines.delay
 import java.util.concurrent.TimeUnit
 
@@ -49,15 +51,28 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
 /** Optional: keeps connections up while the app isn't visible, so the other phone can reach this one. */
 class SyncService : Service() {
+    private var running = false
+
     override fun onCreate() {
         super.onCreate()
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(), type)
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(), type)
+        } catch (e: Exception) {
+            // Android 12+ won't let a foreground service start while the app is in the background — e.g.
+            // when the system restarts this one after killing the app. Stop quietly; it starts again the
+            // next time the app is opened (MainActivity.onStart).
+            if (Build.VERSION.SDK_INT < 31 || e !is ForegroundServiceStartNotAllowedException) throw e
+            SyncLog.add("background sync not allowed to start right now; it resumes when the app is opened")
+            stopSelf()
+            return
+        }
+        running = true
         (application as TwoDoApp).sync.acquire()
     }
 
     override fun onDestroy() {
-        (application as TwoDoApp).sync.release()
+        if (running) (application as TwoDoApp).sync.release()
         super.onDestroy()
     }
 
