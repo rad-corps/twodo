@@ -5,6 +5,11 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+**Times typed in calendar entries.** Type "Dentist 11:30am" (or "at 11:30 am", "7pm", "14:30", "3-4pm",
+"at noon") and the time is set for you; "Dentist" is what's saved. Bare numbers ("at 3", "2-3 apples")
+and prices ("11.30") are left alone. "3:30" with no am/pm means the afternoon. Setting the time
+yourself always wins.
+
 ## v0.6.11 — 2026-10-10
 
 **Edit list items.** Tap an item's words to change them, move it to a section, or delete it. Tick it

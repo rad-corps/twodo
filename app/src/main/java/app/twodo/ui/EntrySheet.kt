@@ -58,6 +58,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.twodo.model.AuditEntry
+import app.twodo.model.findTime
+import app.twodo.model.withoutTime
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -72,7 +74,8 @@ private const val MINUTE_STEP = 15
 /**
  * The one place calendar entries are added and edited: what's happening, which day (Today, Tomorrow
  * or any day), and all day or at a time — set with up/down buttons, or typed by tapping the time.
- * With several [calendars] it also asks which one. Editing adds Delete and the entry's history.
+ * A time typed in the words ("Dentist 11:30am") sets the time, until the time is set by hand; it's
+ * taken out of the words on saving. With several [calendars] it also asks which one. Editing adds Delete and the entry's history.
  */
 @Composable
 internal fun EntrySheet(
@@ -95,13 +98,24 @@ internal fun EntrySheet(
     var pickingDay by remember { mutableStateOf(false) }
     var typingTime by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    // The time picked up from the words (if any), and what the time was before, to go back to if it's deleted.
+    var typedTime by remember { mutableStateOf<LocalTime?>(null) }
+    var timeBefore by remember { mutableStateOf<LocalTime?>(null) }
+    var timeSetByHand by remember { mutableStateOf(false) }
+    fun setTime(value: LocalTime?) {
+        time = value
+        timeSetByHand = true
+        typedTime = null
+    }
     val focus = remember { FocusRequester() }
     // A new entry starts with the keyboard up, ready to type.
     LaunchedEffect(Unit) { if (!editing) runCatching { focus.requestFocus() } }
 
     fun save() {
         if (text.isBlank()) return
-        onSave(EntryDraft(text.trim(), date, time?.let { "%02d:%02d".format(it.hour, it.minute) }), calendar)
+        val found = findTime(text, !is24Hour)
+        val words = if (found != null && found.time == time) withoutTime(text, found) else text.trim()
+        onSave(EntryDraft(words, date, time?.let { "%02d:%02d".format(it.hour, it.minute) }), calendar)
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
@@ -112,7 +126,15 @@ internal fun EntrySheet(
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = {
+                    text = it
+                    if (!timeSetByHand) {
+                        val found = findTime(it, !is24Hour)?.time
+                        if (found != null && typedTime == null) timeBefore = time
+                        if (found != null) time = found else if (typedTime != null) time = timeBefore
+                        typedTime = found
+                    }
+                },
                 label = { Text("What's happening?") },
                 textStyle = MaterialTheme.typography.titleMedium,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -136,16 +158,25 @@ internal fun EntrySheet(
 
             SheetLabel("Time")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                SegmentedButton(selected = time == null, onClick = { time = null }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("All day") }
+                SegmentedButton(selected = time == null, onClick = { setTime(null) }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("All day") }
                 SegmentedButton(
                     selected = time != null,
-                    onClick = { if (time == null) time = nextHour() },
+                    onClick = { if (time == null) setTime(nextHour()) },
                     shape = SegmentedButtonDefaults.itemShape(1, 2),
                 ) { Text("At a time") }
             }
             time?.let { current ->
                 Spacer(Modifier.height(12.dp))
-                TimeStepper(current, is24Hour, onChange = { time = it }, onType = { typingTime = true })
+                TimeStepper(current, is24Hour, onChange = ::setTime, onType = { typingTime = true })
+                if (typedTime != null) {
+                    Text(
+                        "From what you typed",
+                        Modifier.fillMaxWidth().padding(top = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
 
             if (calendars.size > 1) {
@@ -191,7 +222,7 @@ internal fun EntrySheet(
     if (pickingDay) DayPickerDialog(date, onDismiss = { pickingDay = false }) { date = it; pickingDay = false }
     if (typingTime) {
         TimeDialog(time?.let { "%02d:%02d".format(it.hour, it.minute) }, onDismiss = { typingTime = false }, onClear = null) {
-            time = LocalTime.parse(it)
+            setTime(LocalTime.parse(it))
             typingTime = false
         }
     }
