@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.7 — 2026-10-10
+
 - Fix: the app could crash in the background (seemingly at random) when Android restarted background
   sync after closing the app. Background sync now waits until the app is next opened instead.
 
