@@ -5,6 +5,8 @@ GitHub release notes and renames it to the version, so this file and the release
 
 ## Unreleased
 
+## v0.6.11 — 2026-10-10
+
 **Edit list items.** Tap an item's words to change them, move it to a section, or delete it. Tick it
 with its checkbox. (The ✕ on each row is gone: delete is in the item, so nothing goes by accident.)
 
